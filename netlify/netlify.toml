@@ -1,0 +1,24 @@
+[build]
+  publish = "public"
+  functions = "functions"
+
+# Redirect clean /api/* routes to the Serverless Function (/.netlify/functions/api)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+# CDN Caching Headers to stay well within Netlify Free limits (125k function calls & 100GB bandwidth)
+[[headers]]
+  for = "/community_goal.json"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Cache-Control = "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
+    Content-Type = "application/json; charset=utf-8"
+
+[[headers]]
+  for = "/version.json"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Cache-Control = "public, max-age=120, s-maxage=300, stale-while-revalidate=600"
+    Content-Type = "application/json; charset=utf-8"
