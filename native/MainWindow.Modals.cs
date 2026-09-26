@@ -956,10 +956,12 @@ public partial class MainWindow : Window
             createStack.Children.Add(snapIcon);
             createStack.Children.Add(new TextBlock { Text = NexLocale.T("modal_snap_btn_save", "Salvează snapshot nou"), FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
             createBtn.Content = createStack;
-            createBtn.Click += async (_, _) =>
+            createBtn.Click += (_, _) =>
             {
                 HideModal();
-                await RunSafeAsync("Save-NexWinSnapshot.ps1");
+                var snap = NativeTuning.CreateSnapshot(NexLocale.Format("snap_manual_name_format", DateTime.Now.ToString("dd MMM HH:mm")), false);
+                AppendLog(NexLocale.Format("snap_log_created_format", snap.Id, snap.Name), false);
+                ShowToast(NexLocale.T("snap_toast_saved_title", "Snapshot Salvat"), string.Format(NexLocale.T("snap_toast_saved_msg", "Punctul de control {0} a fost salvat cu succes."), snap.Id), NexIcon.Check, GreenBrush);
             };
             actions.Children.Add(createBtn);
 
@@ -973,7 +975,32 @@ public partial class MainWindow : Window
             restoreBtn.Click += async (_, _) =>
             {
                 HideModal();
-                await ConfirmAndRunAsync(NexLocale.T("modal_snap_confirm_restore_title", "Restaurare snapshot"), NexLocale.T("modal_snap_confirm_restore_msg", "Vor fi restaurate setările salvate în ultimul snapshot."), "Restore-NexWinSnapshot.ps1");
+                var snapshots = NativeTuning.GetSnapshots();
+                if (snapshots.Count == 0)
+                {
+                    ShowToast(NexLocale.T("snap_toast_restore_err_title", "Eroare Restaurare"), NexLocale.T("snap_empty_text", "Nu există snapshot-uri salvate în sistem."), NexIcon.Warning, AmberBrush);
+                    return;
+                }
+                var latest = snapshots[0];
+                var confirmed = await ShowConfirmModalAsync(
+                    NexLocale.T("modal_snap_confirm_restore_title", "Restaurare snapshot"),
+                    $"{NexLocale.T("modal_snap_confirm_restore_msg", "Vor fi restaurate setările salvate în ultimul snapshot.")}\n\n({latest.Name})",
+                    AmberBrush,
+                    NexLocale.T("btn_continue", "Continuă"),
+                    NexLocale.T("btn_cancel", "Renunță"));
+                if (confirmed)
+                {
+                    bool ok = NativeTuning.RestoreSnapshot(latest.Id);
+                    if (ok)
+                    {
+                        AppendLog(NexLocale.Format("snap_log_restored_format", latest.Id, latest.Name), false);
+                        ShowToast(NexLocale.T("snap_toast_single_restored_title", "Snapshot Restaurat"), string.Format(NexLocale.T("snap_toast_single_restored_msg", "Setările din {0} au fost aplicate cu succes!"), latest.Name), NexIcon.Check, GreenBrush);
+                    }
+                    else
+                    {
+                        ShowToast(NexLocale.T("snap_toast_restore_err_title", "Eroare Restaurare"), NexLocale.T("snap_toast_restore_err_msg", "Nu s-a putut restaura snapshot-ul selectat."), NexIcon.Warning, RedBrush);
+                    }
+                }
             };
             actions.Children.Add(restoreBtn);
 
@@ -1018,7 +1045,7 @@ public partial class MainWindow : Window
                 });
             }
             bool hasNexWinUpdate = _nexwinSelfUpdateInfo?.IsUpdateAvailable == true;
-            string latestNexWinVer = _nexwinSelfUpdateInfo?.LatestVersion ?? "1.0.85";
+            string latestNexWinVer = _nexwinSelfUpdateInfo?.LatestVersion ?? "1.0.87";
 
             var nexwinCard = new Border
             {
@@ -1104,8 +1131,8 @@ public partial class MainWindow : Window
                 Child = new TextBlock
                 {
                     Text = hasNexWinUpdate
-                        ? $"v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.85"} -> v{latestNexWinVer}"
-                        : $"v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.85"}",
+                        ? $"v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.87"} -> v{latestNexWinVer}"
+                        : $"v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.87"}",
                     FontSize = 9.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = GreenBrush
@@ -1117,8 +1144,8 @@ public partial class MainWindow : Window
             var txtNexWinStatus = new TextBlock
             {
                 Text = hasNexWinUpdate
-                    ? $"Versiune nouă disponibilă: NexWin v{latestNexWinVer}"
-                    : $"NexWin v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.85"} este la zi",
+                    ? NexLocale.Format("notif_remote_new_avail", latestNexWinVer)
+                    : NexLocale.Format("notif_remote_uptodate", _nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.87"),
                 FontSize = 11,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = hasNexWinUpdate ? CyanBrush : GreenBrush,
@@ -1129,7 +1156,7 @@ public partial class MainWindow : Window
             var txtNexWinDesc = new TextBlock
             {
                 Text = hasNexWinUpdate
-                    ? "Actualizare automată în-place: se descarcă și se aplică direct cu repornire automată, fără instalator manual."
+                    ? NexLocale.T("notif_remote_desc_update", "Actualizare automată în-place: se descarcă și se aplică direct cu repornire automată, fără instalator manual.")
                     : NexLocale.T("notif_remote_desc", "Actualizare automată integrată: când apare o versiune nouă NexWin, se instalează direct de aici cu un singur click."),
                 FontSize = 10,
                 Foreground = MutedBrush,
@@ -1163,7 +1190,7 @@ public partial class MainWindow : Window
 
             var checkNexWinBtn = new Button
             {
-                Content = hasNexWinUpdate ? "Actualizează NexWin" : NexLocale.T("notif_remote_btn_check", "Verifică actualizări"),
+                Content = hasNexWinUpdate ? NexLocale.T("notif_remote_btn_update", "Actualizează NexWin") : NexLocale.T("notif_remote_btn_check", "Verifică actualizări"),
                 Style = (Style)FindResource(hasNexWinUpdate ? "PrimaryGradientButtonStyle" : "SecondaryButtonStyle"),
                 Padding = new Thickness(12, 5, 12, 5),
                 FontSize = 11,
@@ -1177,7 +1204,7 @@ public partial class MainWindow : Window
                 {
                     checkNexWinBtn.IsEnabled = false;
                     selfUpgProgressPanel.Visibility = Visibility.Visible;
-                    selfUpgProgressLabel.Text = "Descărcare pachet actualizare NexWin...";
+                    selfUpgProgressLabel.Text = NexLocale.T("notif_remote_downloading", "Descărcare pachet actualizare NexWin...");
 
                     bool ok = await NativeTuning.ExecuteNexWinSelfUpdateAsync(_nexwinSelfUpdateInfo.DownloadUrl, (pct, msg) =>
                     {
@@ -1209,7 +1236,7 @@ public partial class MainWindow : Window
                 {
                     ShowToast(
                         NexLocale.T("notif_remote_toast_title", "Actualizare NexWin"),
-                        $"Rulezi deja cea mai recentă versiune NexWin v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.85"}.",
+                        NexLocale.Format("notif_remote_toast_msg", _nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.87"),
                         NexIcon.Check,
                         GreenBrush);
                 }
@@ -1261,7 +1288,7 @@ public partial class MainWindow : Window
                     VerticalAlignment = VerticalAlignment.Center,
                     Child = new TextBlock
                     {
-                        Text = $"{cachedUpgradesList.Count} programe",
+                        Text = NexLocale.Format("notif_apps_count_badge", cachedUpgradesList.Count),
                         FontSize = 9.5,
                         FontWeight = FontWeights.Bold,
                         Foreground = CyanBrush

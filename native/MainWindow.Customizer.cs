@@ -100,7 +100,10 @@ public partial class MainWindow : Window
         topGrid.Children.Add(restartBtn);
 
         topBar.Child = topGrid;
-        PageRoot.Children.Add(topBar);
+        if (!activeCustomizerTab.Equals("Wallpaper", StringComparison.OrdinalIgnoreCase))
+        {
+            PageRoot.Children.Add(topBar);
+        }
 
         // Sub-Navigation Tabs - "Wallpaper & Live" placed FIRST
         var tabsPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 14) };
@@ -449,7 +452,6 @@ public partial class MainWindow : Window
             Grid.SetColumn(engActions, 1);
             engGrid.Children.Add(engActions);
             engineCard.Child = engGrid;
-            PageRoot.Children.Add(engineCard);
 
             // ================= MODE SWITCHER: LIVE WALLPAPERS vs WALLPAPERS =================
             var modeSwitchRow = new StackPanel
@@ -500,6 +502,7 @@ public partial class MainWindow : Window
             // ================= MODE A: LIVE WALLPAPERS =================
             if (_wallpaperEngineMode == "Live")
             {
+                PageRoot.Children.Add(engineCard);
                 var hubHeader = new Border
                 {
                     Background = CardBackground(),
@@ -1007,12 +1010,12 @@ public partial class MainWindow : Window
                     BorderBrush = new SolidColorBrush(Color.FromRgb(24, 38, 56)),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(10),
-                    Padding = new Thickness(16, 14, 16, 14),
-                    Margin = new Thickness(0, 0, 0, 14)
+                    Padding = new Thickness(14, 10, 14, 10),
+                    Margin = new Thickness(0, 0, 0, 10)
                 };
                 var staticStack = new StackPanel();
 
-                var staticTitleText = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+                var staticTitleText = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
                 staticTitleText.Children.Add(new TextBlock
                 {
                     Text = NexLocale.T("cust_static_header"),
@@ -1023,14 +1026,14 @@ public partial class MainWindow : Window
                 staticTitleText.Children.Add(new TextBlock
                 {
                     Text = NexLocale.T("cust_static_header_desc"),
-                    FontSize = 11,
+                    FontSize = 10.5,
                     Foreground = MutedBrush,
                     Margin = new Thickness(0, 2, 0, 0)
                 });
                 staticStack.Children.Add(staticTitleText);
 
                 // Row 1: Search Bar & Action Buttons
-                var searchRow = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+                var searchRow = new Grid { Margin = new Thickness(0, 0, 0, 8) };
                 searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
                 searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
                 searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1064,10 +1067,11 @@ public partial class MainWindow : Window
 
                 var sBtn = new Button
                 {
-                    Content = NexLocale.T("cust_btn_search"),
+                    Content = _isStaticLoading ? NexLocale.T("status_in_progress", "Căutare...") : NexLocale.T("cust_btn_search"),
                     Style = (Style)FindResource("DarkTableFooterButtonStyle"),
                     Padding = new Thickness(16, 6, 16, 6),
-                    Cursor = Cursors.Hand,
+                    Cursor = _isStaticLoading ? Cursors.Wait : Cursors.Hand,
+                    IsEnabled = !_isStaticLoading,
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 sBtn.Click += (_, _) => TriggerStaticSearch(searchInput.Text.Trim());
@@ -1435,23 +1439,9 @@ public partial class MainWindow : Window
                         };
 
                         var iGrid = new Grid();
-                        string thumbPath = !string.IsNullOrEmpty(photo.LocalThumbnailPath) && File.Exists(photo.LocalThumbnailPath)
-                            ? photo.LocalThumbnailPath
-                            : photo.ThumbnailUrl;
-
-                        if (!string.IsNullOrEmpty(thumbPath))
-                        {
-                            try
-                            {
-                                var bmp = new BitmapImage();
-                                bmp.BeginInit();
-                                bmp.CacheOption = BitmapCacheOption.OnLoad;
-                                bmp.UriSource = new Uri(thumbPath);
-                                bmp.EndInit();
-                                iGrid.Children.Add(new Image { Source = bmp, Stretch = Stretch.UniformToFill });
-                            }
-                            catch { }
-                        }
+                        var cardImg = new Image { Stretch = Stretch.UniformToFill };
+                        iGrid.Children.Add(cardImg);
+                        LoadPhotoThumbnailAsync(cardImg, photo);
 
                         // Resolution Badge
                         var rBadge = new Border
@@ -1634,6 +1624,7 @@ public partial class MainWindow : Window
                         Grid.SetColumn(pCard, col);
                         pGrid.Children.Add(pCard);
                     }
+                    PageRoot.Children.Add(pGrid);
                 }
             }
             // ================= MODE C: BIBLIOTECA MEA (LOCAL DOWNLOADED MEDIA) =================
@@ -2484,7 +2475,7 @@ public partial class MainWindow : Window
         var mainStack = new StackPanel();
 
         // Header Row: Icon + Title/Desc + Status Badge + Toggle Checkbox
-        var topGrid = new Grid { Margin = new Thickness(0, 0, 0, isAutoEnabled ? 10 : 0) };
+        var topGrid = new Grid { Margin = new Thickness(0, 0, 0, 10) };
         topGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
         topGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         topGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -2583,9 +2574,7 @@ public partial class MainWindow : Window
         mainStack.Children.Add(topGrid);
 
         // Controls Row: Media Selector + Interval Pills + Order Selector + "Schimbă acum" button
-        if (isAutoEnabled)
-        {
-            var mediaRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 8), VerticalAlignment = VerticalAlignment.Center };
+        var mediaRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 8), VerticalAlignment = VerticalAlignment.Center };
             mediaRow.Children.Add(new TextBlock
             {
                 Text = NexLocale.T("cust_auto_wp_media_type"),
@@ -2780,7 +2769,6 @@ public partial class MainWindow : Window
             controlsRow.Children.Add(nextBtn);
 
             mainStack.Children.Add(controlsRow);
-        }
 
         if (totalLocalMedia == 0)
         {
@@ -2796,5 +2784,85 @@ public partial class MainWindow : Window
 
         card.Child = mainStack;
         return card;
+    }
+
+    private void LoadPhotoThumbnailAsync(Image imgTarget, WallpaperPhotoItem photo)
+    {
+        if (photo == null || imgTarget == null) return;
+
+        // 1. If photo already has a valid local thumbnail file on disk, load it right away
+        if (!string.IsNullOrEmpty(photo.LocalThumbnailPath) && File.Exists(photo.LocalThumbnailPath))
+        {
+            try
+            {
+                var bmp = new BitmapImage();
+                bmp.BeginInit();
+                bmp.CacheOption = BitmapCacheOption.OnLoad;
+                bmp.UriSource = new Uri(photo.LocalThumbnailPath, UriKind.Absolute);
+                bmp.EndInit();
+                bmp.Freeze();
+                imgTarget.Source = bmp;
+                return;
+            }
+            catch { }
+        }
+
+        // 2. Also check if the file is in thumb cache directory already
+        string cacheDir = WallhavenService.GetThumbCacheDirectory();
+        string cacheFile = Path.Combine(cacheDir, $"thumb_{photo.Id}.jpg");
+        if (File.Exists(cacheFile) && new FileInfo(cacheFile).Length > 100)
+        {
+            try
+            {
+                photo.LocalThumbnailPath = cacheFile;
+                var bmp = new BitmapImage();
+                bmp.BeginInit();
+                bmp.CacheOption = BitmapCacheOption.OnLoad;
+                bmp.UriSource = new Uri(cacheFile, UriKind.Absolute);
+                bmp.EndInit();
+                bmp.Freeze();
+                imgTarget.Source = bmp;
+                return;
+            }
+            catch { }
+        }
+
+        // 3. Otherwise asynchronously download thumbnail in background and update imgTarget on Dispatcher
+        if (!string.IsNullOrEmpty(photo.ThumbnailUrl))
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    byte[]? data = await WallhavenService.GetThumbnailBytesAsync(photo.ThumbnailUrl);
+                    if (data != null && data.Length > 0)
+                    {
+                        try
+                        {
+                            await File.WriteAllBytesAsync(cacheFile, data);
+                            photo.LocalThumbnailPath = cacheFile;
+                        }
+                        catch { }
+
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            try
+                            {
+                                using var ms = new MemoryStream(data);
+                                var bmp = new BitmapImage();
+                                bmp.BeginInit();
+                                bmp.CacheOption = BitmapCacheOption.OnLoad;
+                                bmp.StreamSource = ms;
+                                bmp.EndInit();
+                                bmp.Freeze();
+                                imgTarget.Source = bmp;
+                            }
+                            catch { }
+                        });
+                    }
+                }
+                catch { }
+            });
+        }
     }
 }

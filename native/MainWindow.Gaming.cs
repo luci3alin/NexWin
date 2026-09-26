@@ -1336,7 +1336,7 @@ public partial class MainWindow : Window
                 {
                     try { Process.Start(new ProcessStartInfo { FileName = selectedGame.FullPath, UseShellExecute = true }); } catch { }
                 }
-                ShowToast(selectedGame.DisplayName, "Profilul High Priority + GPU Dedicat a fost activat pentru joc!", NexIcon.Check, GreenBrush);
+                ShowToast(selectedGame.DisplayName, NexLocale.T("gaming_toast_game_prio_activated", "Profilul High Priority + GPU Dedicat a fost activat pentru joc!"), NexIcon.Check, GreenBrush);
                 ShowGaming();
             };
             rightStack.Children.Add(launchGameBtn);

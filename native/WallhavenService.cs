@@ -327,8 +327,7 @@ public static class WallhavenService
                 }
             }
 
-            // Parallel thumbnail pre-caching for instant smooth preview cards
-            var thumbTasks = new List<Task>();
+            // Check existing local thumbnails and kick off background pre-cache without blocking
             foreach (var item in results)
             {
                 if (string.IsNullOrEmpty(item.ThumbnailUrl)) continue;
@@ -339,27 +338,37 @@ public static class WallhavenService
                 }
                 else
                 {
-                    thumbTasks.Add(Task.Run(async () =>
+                    _ = Task.Run(async () =>
                     {
                         try
                         {
                             var bytes = await _httpClient.GetByteArrayAsync(item.ThumbnailUrl);
-                            await File.WriteAllBytesAsync(localThumb, bytes);
-                            item.LocalThumbnailPath = localThumb;
+                            if (bytes != null && bytes.Length > 0)
+                            {
+                                await File.WriteAllBytesAsync(localThumb, bytes);
+                                item.LocalThumbnailPath = localThumb;
+                            }
                         }
                         catch { }
-                    }));
+                    });
                 }
-            }
-
-            if (thumbTasks.Count > 0)
-            {
-                await Task.WhenAny(Task.WhenAll(thumbTasks), Task.Delay(1800));
             }
         }
         catch { }
 
         return results;
+    }
+
+    public static async Task<byte[]?> GetThumbnailBytesAsync(string url)
+    {
+        try
+        {
+            return await _httpClient.GetByteArrayAsync(url);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public static async Task<string> DownloadWallpaperAsync(WallpaperPhotoItem item, IProgress<double>? progress = null)

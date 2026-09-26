@@ -1,6 +1,6 @@
 {
-  "version": "1.0.86",
-  "tag_name": "v1.0.86",
-  "download_url": "https://github.com/luci3alin/NexWin/releases/download/v1.0.86/NexWin-Setup-v1.0.86-native.exe",
-  "release_notes": "NexWin v1.0.86 — Actualizare automată OTA prin Netlify Cloud + GitHub Releases."
+  "version": "1.0.87",
+  "tag_name": "v1.0.87",
+  "download_url": "https://github.com/luci3alin/NexWin/releases/download/v1.0.87/NexWin-Setup-v1.0.87-native.exe",
+  "release_notes": "NexWin v1.0.87 — 100% Native, Wallhaven fixed, zero script alerts."
 }

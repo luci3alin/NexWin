@@ -604,6 +604,7 @@ public sealed partial class MainWindow : Window
         RemoveSystemTrayIcon();
         try
         {
+            LiveWallpaperWindow.StopLive();
             NativeTuning.RestoreOriginalWallpaper(disableAuto: false);
         }
         catch { }
@@ -1224,8 +1225,8 @@ public sealed partial class MainWindow : Window
                 _nexwinSelfUpdateInfo = new NativeTuning.NexWinSelfUpdateInfo
                 {
                     IsUpdateAvailable = true,
-                    CurrentVersion = "1.0.85",
-                    LatestVersion = "1.0.86",
+                    CurrentVersion = "1.0.86",
+                    LatestVersion = "1.0.87",
                     DownloadUrl = "https://github.com/luci3alin/NexWin/releases/latest/download/NexWin-Update.zip",
                     ReleaseNotes = "Actualizare automată în-place cu un singur click, fără reinstalare manuală."
                 };

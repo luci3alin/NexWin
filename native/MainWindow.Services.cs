@@ -110,7 +110,7 @@ public partial class MainWindow : Window
             NexLocale.T("services_visual_title"),
             NexLocale.T("services_visual_desc"),
             NexIcon.Gauge, NexLocale.T("services_visual_badge"), CyanBrush, NexLocale.T("services_visual_chips"),
-            ActionBtn(NexLocale.T("services_visual_btn"), NexIcon.Gauge, CyanBrush, () => RunSafeWithContextAsync(NexLocale.T("services_visual_modal_title", "Efecte Vizuale"), NexLocale.T("services_visual_modal_working", "Optimizare efecte vizuale Windows..."), NexLocale.T("services_visual_modal_done", "Efectele vizuale au fost optimizate."), "Invoke-VisualEffects.ps1", "-Optimize"))
+            ActionBtn(NexLocale.T("services_visual_btn"), NexIcon.Gauge, CyanBrush, () => ExecuteNativeSuiteAsync(NexLocale.T("services_visual_modal_title", "Efecte Vizuale"), NexLocale.T("services_visual_modal_working", "Optimizare efecte vizuale Windows..."), NexLocale.T("services_visual_modal_done", "Efectele vizuale au fost optimizate."), () => NativeTuning.ApplyVisualEffectsNativeAsync(true)))
         );
     }
 }

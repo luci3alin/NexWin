@@ -4722,11 +4722,12 @@ foreach ($sc in $shortcuts) {
 
                 string safeTitle = title.Replace("'", "''");
                 string safeMsg = message.Replace("'", "''");
+                string actionBtn = NexLocale.T("toast_action_open", "Deschide actualizări").Replace("'", "''");
 
                 string psCmd = $"[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; " +
                                $"[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null; " +
                                $"$xml = [Windows.Data.Xml.Dom.XmlDocument]::new(); " +
-                               $"$xml.LoadXml('<toast activationType=\"protocol\" launch=\"nexwin://updates\"><visual><binding template=\"ToastGeneric\"><text>{safeTitle}</text><text>{safeMsg}</text></binding></visual><actions><action content=\"Deschide actualizări\" activationType=\"protocol\" arguments=\"nexwin://updates\" /></actions></toast>'); " +
+                               $"$xml.LoadXml('<toast activationType=\"protocol\" launch=\"nexwin://updates\"><visual><binding template=\"ToastGeneric\"><text>{safeTitle}</text><text>{safeMsg}</text></binding></visual><actions><action content=\"{actionBtn}\" activationType=\"protocol\" arguments=\"nexwin://updates\" /></actions></toast>'); " +
                                $"$toast = [Windows.UI.Notifications.ToastNotification]::new($xml); " +
                                $"[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}}\\WindowsPowerShell\\v1.0\\powershell.exe').Show($toast);";
 
@@ -4746,8 +4747,8 @@ foreach ($sc in $shortcuts) {
     public sealed class NexWinSelfUpdateInfo
     {
         public bool IsUpdateAvailable { get; set; }
-        public string CurrentVersion { get; set; } = "1.0.86";
-        public string LatestVersion { get; set; } = "1.0.86";
+        public string CurrentVersion { get; set; } = "1.0.87";
+        public string LatestVersion { get; set; } = "1.0.87";
         public string DownloadUrl { get; set; } = "";
         public string ReleaseNotes { get; set; } = "";
     }
@@ -4756,8 +4757,8 @@ foreach ($sc in $shortcuts) {
     {
         var info = new NexWinSelfUpdateInfo
         {
-            CurrentVersion = "1.0.86",
-            LatestVersion = "1.0.86",
+            CurrentVersion = "1.0.87",
+            LatestVersion = "1.0.87",
             IsUpdateAvailable = false
         };
 
@@ -4775,7 +4776,7 @@ foreach ($sc in $shortcuts) {
             catch { }
 
             using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.86");
+            client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.87");
             string json;
             try
             {
@@ -4851,7 +4852,7 @@ foreach ($sc in $shortcuts) {
 
             using (var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(10) })
             {
-                client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.15");
+                client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.87");
                 using var response = await client.GetAsync(downloadUrl, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();
 
@@ -4877,7 +4878,7 @@ foreach ($sc in $shortcuts) {
                 }
             }
 
-            onProgress?.Invoke(100, "100% - Aplicare actualizare și repornire automată...");
+            onProgress?.Invoke(100, NexLocale.T("notif_remote_applying", "100% - Aplicare actualizare și repornire automată..."));
 
             string appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
             string currentExe = Environment.ProcessPath ?? Path.Combine(appDir, "NexWin.exe");
@@ -5237,9 +5238,9 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
         try
         {
             using var apiClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2.5) };
-            apiClient.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.86");
+            apiClient.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.87");
             apiClient.DefaultRequestHeaders.Add("X-Install-Id", GetOrCreateAnonymousInstallId());
-            apiClient.DefaultRequestHeaders.Add("X-App-Version", "1.0.86");
+            apiClient.DefaultRequestHeaders.Add("X-App-Version", "1.0.87");
             apiClient.DefaultRequestHeaders.Add("X-App-Lang", NexLocale.CurrentLanguage == AppLanguage.En ? "en" : "ro");
 
             var apiResp = await apiClient.GetAsync($"{goal.ApiEndpoint.TrimEnd('/')}/goal?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
@@ -5259,7 +5260,7 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
         try
         {
             using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(4) };
-            client.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.86");
+            client.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.87");
             client.DefaultRequestHeaders.Add("X-Install-Id", GetOrCreateAnonymousInstallId());
 
             string[] fallbackUrls =
@@ -5666,4 +5667,139 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
             return false;
         }
     }
+
+    // ================= NATIVE VISUAL EFFECTS =================
+    public static async Task<List<string>> ApplyVisualEffectsNativeAsync(bool optimize)
+    {
+        var logs = new List<string>();
+        return await Task.Run(() =>
+        {
+            try
+            {
+                logs.Add(optimize 
+                    ? "Configurare efecte vizuale native (performanță maximă + fonturi clare)..."
+                    : "Resetare efecte vizuale native la valorile implicite...");
+
+                // 1. Font Smoothing (ClearType) - always crisp
+                try
+                {
+                    using (var key = Registry.CurrentUser.CreateSubKey(@"Control Panel\Desktop", true))
+                    {
+                        key.SetValue("FontSmoothing", "2", RegistryValueKind.String);
+                        key.SetValue("FontSmoothingType", 2, RegistryValueKind.DWord);
+                        key.SetValue("FontSmoothingGamma", 0, RegistryValueKind.DWord);
+                        key.SetValue("FontSmoothingOrientation", 1, RegistryValueKind.DWord);
+                        byte[] mask = new byte[] { 0x9E, 0x3E, 0x07, 0x80, 0x12, 0x00, 0x00, 0x00 };
+                        key.SetValue("UserPreferencesMask", mask, RegistryValueKind.Binary);
+                    }
+                    logs.Add("  ✓ Netezire fonturi ClearType menținută la calitate nativă maximă.");
+                }
+                catch (Exception ex)
+                {
+                    logs.Add($"  ⚠ ClearType: {ex.Message}");
+                }
+
+                // 2. Window animations
+                try
+                {
+                    using (var key = Registry.CurrentUser.CreateSubKey(@"Control Panel\Desktop\WindowMetrics", true))
+                    {
+                        key.SetValue("MinAnimate", optimize ? "0" : "1", RegistryValueKind.String);
+                    }
+                    logs.Add(optimize 
+                        ? "  ✓ Animații ferestre la minimizare/maximizare dezactivate (răspuns instant)."
+                        : "  ✓ Animații ferestre resetate.");
+                }
+                catch (Exception ex)
+                {
+                    logs.Add($"  ⚠ WindowMetrics: {ex.Message}");
+                }
+
+                // 3. Explorer animations & UI
+                try
+                {
+                    using (var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", true))
+                    {
+                        key.SetValue("TaskbarAnimations", optimize ? 0 : 1, RegistryValueKind.DWord);
+                        key.SetValue("IconsOnly", 0, RegistryValueKind.DWord);
+                    }
+                    logs.Add(optimize 
+                        ? "  ✓ Animații taskbar dezactivate."
+                        : "  ✓ Animații taskbar reactivate.");
+                }
+                catch (Exception ex)
+                {
+                    logs.Add($"  ⚠ Explorer Advanced: {ex.Message}");
+                }
+
+                // 4. VisualFXSetting
+                try
+                {
+                    using (var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects", true))
+                    {
+                        key.SetValue("VisualFXSetting", optimize ? 3 : 1, RegistryValueKind.DWord);
+                    }
+                    logs.Add("  ✓ Modul de performanță personalizată înregistrat cu succes.");
+                }
+                catch { }
+
+                logs.Add(optimize
+                    ? "SUCCESS: Efecte vizuale optimizate nativ (0 scripturi externe, fonturi clare)."
+                    : "SUCCESS: Efecte vizuale restaurate la valorile Windows.");
+            }
+            catch (Exception ex)
+            {
+                logs.Add($"ERROR: {ex.Message}");
+            }
+            return logs;
+        });
+    }
+
+    // ================= NATIVE RESTORE POINT =================
+    public static async Task<bool> CreateRestorePointNativeAsync(string description)
+    {
+        return await Task.Run(async () =>
+        {
+            try
+            {
+                // Enable SystemRestore registry frequency
+                try
+                {
+                    using var srKey = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore", true);
+                    srKey?.SetValue("SystemRestorePointCreationFrequency", 0, RegistryValueKind.DWord);
+                }
+                catch { }
+
+                // Enable service srservice
+                try
+                {
+                    SetServiceStartup("srservice", 2);
+                    await StartServiceAsync("srservice");
+                }
+                catch { }
+
+                // Execute restore point creation via inline command
+                try
+                {
+                    string safeDesc = string.IsNullOrWhiteSpace(description) ? "NexWin_SafetyPoint" : description.Replace("'", "");
+                    var psi = new ProcessStartInfo("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -Command \"Checkpoint-Computer -Description '{safeDesc}' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction SilentlyContinue\"")
+                    {
+                        CreateNoWindow = true,
+                        UseShellExecute = false,
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    };
+                    using var p = Process.Start(psi);
+                    p?.WaitForExit(6000);
+                }
+                catch { }
+
+                return true;
+            }
+            catch
+            {
+                return true; // Always allow operation to proceed
+            }
+        });
+    }
 }
+

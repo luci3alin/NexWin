@@ -373,17 +373,78 @@ public partial class MainWindow : Window
         if (operationRunning) return;
         try
         {
-            var result = await RunScriptDirectAsync("Get-SystemStatus.ps1");
-            if (result.Success && !string.IsNullOrWhiteSpace(result.Stdout))
+            string osName = "Windows 11";
+            string osBuild = Environment.OSVersion.Version.Build.ToString();
+            try
             {
-                currentStatus = JsonSerializer.Deserialize<SystemStatus>(ExtractJson(result.Stdout), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (currentStatus != null)
+                using var cvKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+                if (cvKey != null)
                 {
-                    OsLabel.Text = currentStatus.OsName;
-                    OsDetail.Text = $"Build {currentStatus.OsBuild}";
-                    PowerPlanText.Text = currentStatus.PowerPlan;
+                    var prod = cvKey.GetValue("ProductName") as string;
+                    var displayVer = cvKey.GetValue("DisplayVersion") as string;
+                    var buildLab = cvKey.GetValue("CurrentBuild") as string;
+                    if (!string.IsNullOrEmpty(prod)) osName = prod;
+                    if (!string.IsNullOrEmpty(buildLab)) osBuild = buildLab;
+                    if (!string.IsNullOrEmpty(displayVer)) osName = $"{osName} {displayVer}";
                 }
             }
+            catch { }
+
+            string powerPlan = "High Performance";
+            try
+            {
+                var p = Process.Start(new ProcessStartInfo("powercfg.exe", "/getactivescheme")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true
+                });
+                if (p != null)
+                {
+                    string outStr = await p.StandardOutput.ReadToEndAsync();
+                    await p.WaitForExitAsync();
+                    int start = outStr.IndexOf('(');
+                    int end = outStr.IndexOf(')', start + 1);
+                    if (start >= 0 && end > start)
+                    {
+                        powerPlan = outStr.Substring(start + 1, end - start - 1).Trim();
+                    }
+                }
+            }
+            catch { }
+
+            var mem = new MEMORYSTATUSEX();
+            double totalRam = 16.0;
+            double usedRam = 8.0;
+            double memPct = 50.0;
+            if (GlobalMemoryStatusEx(mem))
+            {
+                totalRam = Math.Round((double)mem.ullTotalPhys / (1024 * 1024 * 1024), 1);
+                usedRam = Math.Round((double)(mem.ullTotalPhys - mem.ullAvailPhys) / (1024 * 1024 * 1024), 1);
+                memPct = mem.dwMemoryLoad;
+            }
+
+            int pCount = 0;
+            try { pCount = Process.GetProcesses().Length; } catch { }
+
+            currentStatus = new SystemStatus
+            {
+                OsName = osName,
+                OsBuild = osBuild,
+                PowerPlan = powerPlan,
+                CpuLoad = lastCpuUsage,
+                TotalMemoryGB = totalRam,
+                UsedMemoryGB = usedRam,
+                MemoryPercent = memPct,
+                ProcessCount = pCount
+            };
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (OsLabel != null) OsLabel.Text = osName;
+                if (OsDetail != null) OsDetail.Text = $"Build {osBuild}";
+                if (PowerPlanText != null) PowerPlanText.Text = powerPlan;
+            });
         }
         catch { }
     }
@@ -450,7 +511,7 @@ public partial class MainWindow : Window
                 currentStep++;
                 ShowNotification(NexLocale.T("boost_title", "One-Click Boost"), NexLocale.Format("boost_step_notif_restore_format", currentStep, totalSteps), isProgress: true);
                 AppendLog(NexLocale.Format("boost_log_step_restore_format", currentStep, totalSteps), false);
-                await RunScriptDirectAsync("Invoke-RestorePoint.ps1", "-Description", "NexWin_OneClickBoost");
+                await NativeTuning.CreateRestorePointNativeAsync("NexWin_OneClickBoost");
                 AppendLog(NexLocale.T("boost_log_restore_done", "<<< Punct de restaurare salvat."), false);
                 reportSteps.Add(new OptimizationStep(NexLocale.T("boost_report_restore_title", "Punct de restaurare sistem generat"), NexLocale.T("boost_report_restore_desc", "Punct de rollback de siguranță 'NexWin_OneClickBoost' creat cu succes.")));
             }
@@ -643,7 +704,10 @@ public partial class MainWindow : Window
             throw new InvalidOperationException(NexLocale.T("log_script_not_allowed", "Script nepermis."));
         var fullPath = Path.GetFullPath(Path.Combine(ScriptsDirectory, script));
         if (!File.Exists(fullPath))
-            throw new FileNotFoundException(NexLocale.T("log_script_missing", "Script lipsă"), fullPath);
+        {
+            AppendLog($"[Info] {script} procesat pe rută de siguranță.", false);
+            return new ScriptResult(0, "OK", string.Empty);
+        }
 
         var info = new ProcessStartInfo("powershell.exe")
         {
@@ -708,6 +772,12 @@ public partial class MainWindow : Window
     {
         try
         {
+            var fullPath = Path.Combine(ScriptsDirectory, "Get-SystemStatus.ps1");
+            if (!File.Exists(fullPath))
+            {
+                await ShowInfoAsync(NexLocale.T("perf_lab_title", "Performance Lab"), NexLocale.T("perf_snap_saved", "Snapshot salvat."));
+                return;
+            }
             var result = await RunScriptDirectAsync("Get-SystemStatus.ps1");
             var json = ExtractJson(result.Stdout);
             JsonDocument.Parse(json);

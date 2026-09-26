@@ -332,7 +332,7 @@ public partial class MainWindow : Window
         sp.Children.Add(descBlock);
 
         // Version only
-        var versionPanel = CreateInfoItem(NexLocale.T("settings_version"), "v1.0.86");
+        var versionPanel = CreateInfoItem(NexLocale.T("settings_version"), "v1.0.87");
         sp.Children.Add(versionPanel);
 
         aboutCard.Child = sp;

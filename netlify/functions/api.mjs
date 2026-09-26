@@ -2,7 +2,7 @@ import { getStore } from "@netlify/blobs";
 
 const DEFAULT_GOAL = {
   schema: "nexwin-community-goal-v3",
-  version: "1.0.86",
+  version: "1.0.87",
   goalId: "nexwin-community-goal-v3",
   titleRo: "Susține Proiectul",
   titleEn: "Support the Project",

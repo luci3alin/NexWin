@@ -1139,7 +1139,7 @@ public partial class MainWindow : Window
         });
         textPanel.Children.Add(new TextBlock
         {
-            Text = app.Description,
+            Text = NexLocale.T($"app_desc_{app.Id}", app.Description),
             FontSize = 10,
             Foreground = MutedBrush,
             TextWrapping = TextWrapping.Wrap,

@@ -1,5 +1,5 @@
 #define MyAppName "NexWin"
-#define MyAppVersion "1.0.86"
+#define MyAppVersion "1.0.87"
 #define MyAppPublisher "luci3alin"
 #define MyAppURL "https://github.com/luci3alin/NexWin"
 #define MyAppExeName "NexWin.exe"
@@ -34,6 +34,7 @@ RestartApplications=no
 DisableProgramGroupPage=yes
 ShowLanguageDialog=yes
 UsePreviousLanguage=no
+ChangesAssociations=yes
 
 [Languages]
 Name: "romanian"; MessagesFile: "compiler:Default.isl,Romanian.isl"
@@ -83,18 +84,16 @@ Source: "..\native\assets\logo.ico"; DestDir: "{app}"; DestName: "logo.ico"; Fla
 Source: "..\native\assets\nexwin_ribbon.ico"; DestDir: "{app}"; DestName: "nexwin_ribbon.ico"; Flags: ignoreversion
 Source: "..\native\assets\logo.ico"; DestDir: "{app}\assets"; DestName: "logo.ico"; Flags: ignoreversion
 
+[Registry]
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "NexWin"; ValueData: """{app}\{#MyAppExeName}"" --tray"; Flags: uninsdeletevalue; Tasks: autostarttray
+
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\nexwin_ribbon.ico"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; IconFilename: "{app}\nexwin_ribbon.ico"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\nexwin_ribbon.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "ie4uinit.exe"; Parameters: "-show"; Flags: runhidden waituntilterminated
-Filename: "schtasks.exe"; Parameters: "/Create /TN ""NexWinAutoStart"" /TR ""\""{app}\{#MyAppExeName}\"" --tray"" /SC ONLOGON /RL HIGHEST /F"; Flags: runhidden waituntilterminated; Tasks: autostarttray
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
-
-[UninstallRun]
-Filename: "schtasks.exe"; Parameters: "/Delete /TN ""NexWinAutoStart"" /F"; Flags: runhidden
 
 [Code]
 procedure SyncLanguageAndSettings();
