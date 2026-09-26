@@ -1,27 +1,27 @@
-node_modules/
-npm-debug.log*
-.npm-cache/
+# Private Source Code & Build folders (Closed-source distribution)
+native/
+installer/
+scripts/
+netlify/
+server/
+src/
+public/
 dist/
 dist-installer/
-native/bin/
-native/obj/
-native/*.bak
 native_stage/
 release_stage/
 scratch/
-qa-*.png
-qa-exact-render.png
-badge*_crop.png
-card*_crop.png
-card*_full_ill.png
-extracted_*.png
-ill_*.png
-logo_clean.png
-logo_crop.png
-speedtest-win64.zip
+node_modules/
+.netlify/
+
+# Internal documentation & scripts
+DOCUMENTATIE_TEHNICA.md
+PROJECT_HANDOVER.md
+capture_qa.ps1
+*.old.*
+*.pdb
 *.log
 *.user
 *.suo
-
-# Local Netlify folder
-.netlify
+*.png
+*.zip
