@@ -12,6 +12,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Net.Http;
+using System.Text.Json;
 using Microsoft.Win32;
 
 namespace NexWin.Native;
@@ -3172,6 +3173,98 @@ public static class NativeTuning
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx([In, Out] MEMORYSTATUSEX lpBuffer);
 
+    private static int _cachedRamSpeed = 0;
+    private static string? _cachedRamType = null;
+    private static string? _cachedRamChannels = null;
+    private static bool _ramDetectionStarted = false;
+
+    public static void EnsureRamSpecsDetected()
+    {
+        if (_ramDetectionStarted) return;
+        _ramDetectionStarted = true;
+
+        Task.Run(() =>
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -NonInteractive -Command \"Get-CimInstance Win32_PhysicalMemory | Select-Object Speed, ConfiguredClockSpeed, SMBIOSMemoryType, Capacity | ConvertTo-Json -Compress\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var proc = Process.Start(psi);
+                if (proc == null) return;
+                string output = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(8000);
+
+                if (string.IsNullOrWhiteSpace(output)) return;
+
+                using var doc = JsonDocument.Parse(output);
+                int stickCount = 0;
+                int maxSpeed = 0;
+                int memoryType = 0;
+
+                if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                {
+                    stickCount = doc.RootElement.GetArrayLength();
+                    foreach (var elem in doc.RootElement.EnumerateArray())
+                    {
+                        int spd = 0;
+                        if (elem.TryGetProperty("ConfiguredClockSpeed", out var ccs) && ccs.GetInt32() > 0) spd = ccs.GetInt32();
+                        else if (elem.TryGetProperty("Speed", out var s) && s.GetInt32() > 0) spd = s.GetInt32();
+                        if (spd > maxSpeed) maxSpeed = spd;
+
+                        if (elem.TryGetProperty("SMBIOSMemoryType", out var smt) && smt.GetInt32() > 0)
+                        {
+                            memoryType = smt.GetInt32();
+                        }
+                    }
+                }
+                else if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    stickCount = 1;
+                    var elem = doc.RootElement;
+                    int spd = 0;
+                    if (elem.TryGetProperty("ConfiguredClockSpeed", out var ccs) && ccs.GetInt32() > 0) spd = ccs.GetInt32();
+                    else if (elem.TryGetProperty("Speed", out var s) && s.GetInt32() > 0) spd = s.GetInt32();
+                    maxSpeed = spd;
+
+                    if (elem.TryGetProperty("SMBIOSMemoryType", out var smt) && smt.GetInt32() > 0)
+                    {
+                        memoryType = smt.GetInt32();
+                    }
+                }
+
+                if (maxSpeed > 0) _cachedRamSpeed = maxSpeed;
+
+                string detectedType = memoryType switch
+                {
+                    34 or 35 => "DDR5",
+                    26 => "DDR4",
+                    24 => "DDR3",
+                    20 or 21 => "DDR2",
+                    _ => maxSpeed >= 4800 ? "DDR5" : (maxSpeed >= 2133 ? "DDR4" : (maxSpeed >= 800 ? "DDR3" : "DDR"))
+                };
+                _cachedRamType = detectedType;
+
+                _cachedRamChannels = stickCount switch
+                {
+                    1 => "Single Channel",
+                    2 => "Dual Channel",
+                    4 => "Quad Channel",
+                    > 2 => $"{stickCount} Canale",
+                    _ => "Dual Channel"
+                };
+            }
+            catch { }
+        });
+    }
+
     private static HardwareTelemetry? _cachedTelemetry;
     private static DateTime _lastTelemetryTime = DateTime.MinValue;
     private static string? _cachedDiskFriendlyModel = null;
@@ -3390,6 +3483,11 @@ public static class NativeTuning
                 tele.RamFreeGb = Math.Round(availGb, 1);
                 tele.RamUsedGb = Math.Round(tele.RamTotalGb - tele.RamFreeGb, 1);
             }
+
+            EnsureRamSpecsDetected();
+            if (_cachedRamSpeed > 0) tele.RamSpeedMhz = _cachedRamSpeed;
+            if (!string.IsNullOrEmpty(_cachedRamType)) tele.RamType = _cachedRamType;
+            if (!string.IsNullOrEmpty(_cachedRamChannels)) tele.RamChannels = _cachedRamChannels;
 
             // 3. Real Drive C storage info
             var cDrive = DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady && d.Name.StartsWith("C", StringComparison.OrdinalIgnoreCase));

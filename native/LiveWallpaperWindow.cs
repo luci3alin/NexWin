@@ -430,16 +430,30 @@ public class LiveWallpaperWindow : Window
                 return;
             }
 
+            int style = GetWindowLong(fg, GWL_STYLE);
+            // If window has standard title bar (WS_CAPTION = 0x00C00000), it's a regular desktop app (Chrome, Discord, etc.), NOT a game!
+            if ((style & 0x00C00000) == 0x00C00000)
+            {
+                if (IsPausedForGame) ResumePlayback();
+                return;
+            }
+
             if (GetWindowRect(fg, out RECT rect))
             {
-                int fgW = rect.Right - rect.Left;
-                int fgH = rect.Bottom - rect.Top;
-                int screenW = (int)SystemParameters.PrimaryScreenWidth;
-                int screenH = (int)SystemParameters.PrimaryScreenHeight;
+                var monitors = GetAllMonitors();
+                bool isGameFullscreen = false;
+                foreach (var m in monitors)
+                {
+                    // A true fullscreen game covers the ENTIRE monitor including where the taskbar would be
+                    if (rect.Left <= m.Left + 5 && rect.Top <= m.Top + 5 &&
+                        rect.Right >= m.Right - 5 && rect.Bottom >= m.Bottom - 5)
+                    {
+                        isGameFullscreen = true;
+                        break;
+                    }
+                }
 
-                bool isFullScreen = (fgW >= (screenW - 5) && fgH >= (screenH - 5));
-
-                if (isFullScreen)
+                if (isGameFullscreen)
                 {
                     if (!IsPausedForGame) PausePlayback();
                     return;
@@ -640,26 +654,34 @@ public class LiveWallpaperWindow : Window
             return $"    <div class=\"video-layer\" style=\"left:0;top:0;width:100%;height:100%;\"><video src=\"{fileUri}\" autoplay loop muted playsinline></video></div>";
         }
 
-        int virtLeft = (int)SystemParameters.VirtualScreenLeft;
-        int virtTop = (int)SystemParameters.VirtualScreenTop;
+        int minX = monitors.Min(m => m.Left);
+        int maxX = monitors.Max(m => m.Right);
+        int minY = monitors.Min(m => m.Top);
+        int maxY = monitors.Max(m => m.Bottom);
+        double totalW = Math.Max(1, maxX - minX);
+        double totalH = Math.Max(1, maxY - minY);
 
         if (int.TryParse(mode, out int specificIndex))
         {
             if (specificIndex >= 0 && specificIndex < monitors.Count)
             {
                 var m = monitors[specificIndex];
-                int relX = m.Left - virtLeft;
-                int relY = m.Top - virtTop;
-                return $"    <div class=\"video-layer\" style=\"left:{relX}px;top:{relY}px;width:{m.Width}px;height:{m.Height}px;\"><video src=\"{fileUri}\" autoplay loop muted playsinline></video></div>";
+                double pLeft = ((double)(m.Left - minX) / totalW) * 100.0;
+                double pTop = ((double)(m.Top - minY) / totalH) * 100.0;
+                double pWidth = ((double)m.Width / totalW) * 100.0;
+                double pHeight = ((double)m.Height / totalH) * 100.0;
+                return $"    <div class=\"video-layer\" style=\"left:{pLeft:0.000}%;top:{pTop:0.000}%;width:{pWidth:0.000}%;height:{pHeight:0.000}%;\"><video src=\"{fileUri}\" autoplay loop muted playsinline></video></div>";
             }
         }
 
         var sb = new StringBuilder();
         foreach (var m in monitors)
         {
-            int relX = m.Left - virtLeft;
-            int relY = m.Top - virtTop;
-            sb.AppendLine($"    <div class=\"video-layer\" style=\"left:{relX}px;top:{relY}px;width:{m.Width}px;height:{m.Height}px;\"><video src=\"{fileUri}\" autoplay loop muted playsinline></video></div>");
+            double pLeft = ((double)(m.Left - minX) / totalW) * 100.0;
+            double pTop = ((double)(m.Top - minY) / totalH) * 100.0;
+            double pWidth = ((double)m.Width / totalW) * 100.0;
+            double pHeight = ((double)m.Height / totalH) * 100.0;
+            sb.AppendLine($"    <div class=\"video-layer\" style=\"left:{pLeft:0.000}%;top:{pTop:0.000}%;width:{pWidth:0.000}%;height:{pHeight:0.000}%;\"><video src=\"{fileUri}\" autoplay loop muted playsinline></video></div>");
         }
         return sb.ToString();
     }
@@ -1039,17 +1061,10 @@ public class LiveWallpaperWindow : Window
 
                 SetParent(hWnd, targetParent);
 
-                int finalX = screenX;
-                int finalY = screenY;
+                int finalX = 0;
+                int finalY = 0;
                 int finalW = screenW;
                 int finalH = screenH;
-
-                var pt = new POINT { X = screenX, Y = screenY };
-                if (ScreenToClient(targetParent, ref pt))
-                {
-                    finalX = pt.X;
-                    finalY = pt.Y;
-                }
 
                 if (GetWindowRect(targetParent, out RECT rcTarget))
                 {

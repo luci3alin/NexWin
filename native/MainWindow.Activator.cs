@@ -394,7 +394,7 @@ public partial class MainWindow : Window
                 NexLocale.T("act_opt_online_kms_title"),
                 NexLocale.T("status_periodic"),
                 NexLocale.T("act_opt_online_kms_desc"),
-                "/Online-KMS",
+                "/K-Windows",
                 false));
         }
         else if (target == "office")
@@ -412,7 +412,7 @@ public partial class MainWindow : Window
                 NexLocale.T("act_opt_online_kms_title"),
                 NexLocale.T("status_periodic"),
                 NexLocale.T("act_opt_online_kms_off_desc"),
-                "/Online-KMS",
+                "/K-Office",
                 false));
         }
         else // "all"
@@ -430,7 +430,7 @@ public partial class MainWindow : Window
                 NexLocale.T("act_opt_all_kms38_title"),
                 NexLocale.T("status_extended"),
                 NexLocale.T("act_opt_all_kms38_desc"),
-                "/KMS38 /Online-KMS",
+                "/KMS38 /K-Office",
                 false));
 
             options.Add(new ActivationMethodOption(
@@ -438,7 +438,7 @@ public partial class MainWindow : Window
                 NexLocale.T("act_opt_all_kms_title"),
                 NexLocale.T("status_standard"),
                 NexLocale.T("act_opt_all_kms_desc"),
-                "/Online-KMS",
+                "/K-WindowsOffice",
                 false));
         }
 
@@ -1059,7 +1059,11 @@ public partial class MainWindow : Window
                 winOk = (newWinInfo != null && newWinInfo.LicenseStatus == 1) ||
                         finalLog.Contains("is permanently activated", StringComparison.OrdinalIgnoreCase) ||
                         finalLog.Contains("Product is permanently activated", StringComparison.OrdinalIgnoreCase) ||
-                        finalLog.Contains("Activation Successful", StringComparison.OrdinalIgnoreCase);
+                        finalLog.Contains("Activation Successful", StringComparison.OrdinalIgnoreCase) ||
+                        finalLog.Contains("Product is successfully activated", StringComparison.OrdinalIgnoreCase) ||
+                        finalLog.Contains("Activation is successful", StringComparison.OrdinalIgnoreCase) ||
+                        finalLog.Contains("KMS Activation Successful", StringComparison.OrdinalIgnoreCase) ||
+                        finalLog.Contains("180 day", StringComparison.OrdinalIgnoreCase);
             }
 
             if (target is "office" or "all")
@@ -1069,7 +1073,10 @@ public partial class MainWindow : Window
                 bool ohookFile = IsOfficeOhookActivated();
                 bool logOk = finalLog.Contains("are activated, use them directly", StringComparison.OrdinalIgnoreCase) ||
                              finalLog.Contains("Office apps such as Word, Excel are activated", StringComparison.OrdinalIgnoreCase) ||
-                             (finalLog.Contains("Ohook", StringComparison.OrdinalIgnoreCase) && finalLog.Contains("Successful", StringComparison.OrdinalIgnoreCase));
+                             (finalLog.Contains("Ohook", StringComparison.OrdinalIgnoreCase) && finalLog.Contains("Successful", StringComparison.OrdinalIgnoreCase)) ||
+                             finalLog.Contains("Office is activated", StringComparison.OrdinalIgnoreCase) ||
+                             finalLog.Contains("Office activation successful", StringComparison.OrdinalIgnoreCase) ||
+                             (finalLog.Contains("Office", StringComparison.OrdinalIgnoreCase) && finalLog.Contains("180 day", StringComparison.OrdinalIgnoreCase));
                 offOk = cimOk || ohookFile || logOk;
             }
 

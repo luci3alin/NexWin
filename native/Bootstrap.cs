@@ -182,11 +182,11 @@ internal static class Bootstrap
         }
         application.Exit += (_, _) =>
         {
-            try { NativeTuning.RestoreOriginalWallpaper(disableAuto: false); } catch { }
+            try { LiveWallpaperWindow.StopLive(); LiveWallpaperWindow.RepairDesktopState(IntPtr.Zero); } catch { }
         };
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
-            try { NativeTuning.RestoreOriginalWallpaper(disableAuto: false); } catch { }
+            try { LiveWallpaperWindow.StopLive(); LiveWallpaperWindow.RepairDesktopState(IntPtr.Zero); } catch { }
         };
         application.Run(mainWindow);
     }
