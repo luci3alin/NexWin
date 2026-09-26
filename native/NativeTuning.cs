@@ -18,6 +18,8 @@ namespace NexWin.Native;
 
 public static class NativeTuning
 {
+    public const string CurrentVersion = "1.0.87";
+
     public static void TrimWorkingSet()
     {
         try
@@ -2250,23 +2252,24 @@ public static class NativeTuning
     {
         return await Task.Run(() =>
         {
+            bool isEn = NexLocale.CurrentLanguage == AppLanguage.En;
             try
             {
                 if (ct.IsCancellationRequested)
-                    return (false, "Operatiune anulata de utilizator.", false);
+                    return (false, isEn ? "Operation cancelled by user." : "Operatiune anulata de utilizator.", false);
 
                 // Pasul 1: Pregatire mediu si eliberare resurse
-                onStepUpdate?.Invoke(1, $"Pregatire mediu de instalare pentru {app.Name}...");
+                onStepUpdate?.Invoke(1, isEn ? $"Preparing installation environment for {app.Name}..." : $"Pregatire mediu de instalare pentru {app.Name}...");
                 KillConflictingAppProcesses(app);
 
                 if (ct.IsCancellationRequested)
-                    return (false, "Operatiune anulata de utilizator.", false);
+                    return (false, isEn ? "Operation cancelled by user." : "Operatiune anulata de utilizator.", false);
 
                 bool isInstalled = CheckAppInstalled(app.RelativeExePath);
                 if (isInstalled)
                 {
                     // Pasul 2: Verificare versiune si noutati
-                    onStepUpdate?.Invoke(2, $"Verificare versiune curenta pentru {app.Name}...");
+                    onStepUpdate?.Invoke(2, isEn ? $"Checking current version for {app.Name}..." : $"Verificare versiune curenta pentru {app.Name}...");
 
                     var checkPsi = new ProcessStartInfo("winget.exe", $"upgrade --id {app.WingetId} --exact")
                     {
@@ -2287,21 +2290,22 @@ public static class NativeTuning
                                 checkOut.Contains("No newer package", StringComparison.OrdinalIgnoreCase) ||
                                 checkOut.Contains("nu a fost gasita nicio actualizare", StringComparison.OrdinalIgnoreCase))
                             {
-                                onStepUpdate?.Invoke(4, $"{app.Name} este deja la cea mai recenta versiune si nu necesita nicio modificare.");
+                                string msgAlready = isEn ? $"{app.Name} is already at the latest version and requires no changes." : $"{app.Name} este deja la cea mai recenta versiune si nu necesita nicio modificare.";
+                                onStepUpdate?.Invoke(4, msgAlready);
                                 Thread.Sleep(300);
-                                return (true, $"{app.Name} este deja la cea mai recenta versiune si nu necesita nicio modificare.", false);
+                                return (true, msgAlready, false);
                             }
                         }
                     }
 
                     if (ct.IsCancellationRequested)
-                        return (false, "Operatiune anulata de utilizator.", false);
+                        return (false, isEn ? "Operation cancelled by user." : "Operatiune anulata de utilizator.", false);
 
-                    onStepUpdate?.Invoke(2, $"Descarcare versiune actualizata pentru {app.Name}...");
+                    onStepUpdate?.Invoke(2, isEn ? $"Downloading updated version for {app.Name}..." : $"Descarcare versiune actualizata pentru {app.Name}...");
                     KillConflictingAppProcesses(app);
 
                     // Pasul 3: Configurare si instalare silentioasa
-                    onStepUpdate?.Invoke(3, $"Configurare si instalare actualizare in sistem pentru {app.Name}...");
+                    onStepUpdate?.Invoke(3, isEn ? $"Configuring and installing system update for {app.Name}..." : $"Configurare si instalare actualizare in sistem pentru {app.Name}...");
 
                     var upPsi = new ProcessStartInfo("winget.exe", $"upgrade --id {app.WingetId} -e --silent --accept-package-agreements --accept-source-agreements --disable-interactivity")
                     {
@@ -2313,14 +2317,14 @@ public static class NativeTuning
                         StandardOutputEncoding = Encoding.UTF8
                     };
                     using var upP = Process.Start(upPsi);
-                    if (upP == null) return (false, "Nu s-a putut initia procesul de actualizare.", false);
+                    if (upP == null) return (false, isEn ? "Could not initiate update process." : "Nu s-a putut initia procesul de actualizare.", false);
 
                     while (!upP.WaitForExit(500))
                     {
                         if (ct.IsCancellationRequested)
                         {
                             try { upP.Kill(); } catch { }
-                            return (false, "Operatiune anulata de utilizator.", false);
+                            return (false, isEn ? "Operation cancelled by user." : "Operatiune anulata de utilizator.", false);
                         }
                     }
 
@@ -2329,20 +2333,20 @@ public static class NativeTuning
                     bool upOk = upP.ExitCode == 0;
 
                     // Pasul 4: Validare finala
-                    onStepUpdate?.Invoke(4, upOk ? $"Actualizare {app.Name} finalizata cu succes." : $"Finalizare actualizare {app.Name}.");
-                    return (upOk, upOk ? $"Actualizare {app.Name} finalizata cu succes!" : $"Actualizarea aplicatiei {app.Name} a fost oprita sau necesita permisiuni de sistem.", true);
+                    onStepUpdate?.Invoke(4, upOk ? (isEn ? $"Update for {app.Name} completed successfully." : $"Actualizare {app.Name} finalizata cu succes.") : (isEn ? $"Finished update attempt for {app.Name}." : $"Finalizare actualizare {app.Name}."));
+                    return (upOk, upOk ? (isEn ? $"Update for {app.Name} completed successfully!" : $"Actualizare {app.Name} finalizata cu succes!") : (isEn ? $"Update for {app.Name} was stopped or requires system permissions." : $"Actualizarea aplicatiei {app.Name} a fost oprita sau necesita permisiuni de sistem."), true);
                 }
                 else
                 {
                     // Pasul 2: Descarcare pachet oficial
-                    onStepUpdate?.Invoke(2, $"Descarcare pachet oficial de instalare pentru {app.Name}...");
+                    onStepUpdate?.Invoke(2, isEn ? $"Downloading official installation package for {app.Name}..." : $"Descarcare pachet oficial de instalare pentru {app.Name}...");
                     KillConflictingAppProcesses(app);
 
                     if (ct.IsCancellationRequested)
-                        return (false, "Operatiune anulata de utilizator.", false);
+                        return (false, isEn ? "Operation cancelled by user." : "Operatiune anulata de utilizator.", false);
 
                     // Pasul 3: Instalare configurata in sistem
-                    onStepUpdate?.Invoke(3, $"Instalare configurata pe dispozitiv pentru {app.Name}...");
+                    onStepUpdate?.Invoke(3, isEn ? $"Installing on device for {app.Name}..." : $"Instalare configurata pe dispozitiv pentru {app.Name}...");
 
                     var inPsi = new ProcessStartInfo("winget.exe", $"install --id {app.WingetId} -e --silent --accept-package-agreements --accept-source-agreements --disable-interactivity")
                     {
@@ -2354,7 +2358,7 @@ public static class NativeTuning
                         StandardOutputEncoding = Encoding.UTF8
                     };
                     using var inP = Process.Start(inPsi);
-                    if (inP == null) return (false, "Nu s-a putut initia procesul de instalare.", false);
+                    if (inP == null) return (false, isEn ? "Could not initiate installation process." : "Nu s-a putut initia procesul de instalare.", false);
 
                     while (!inP.WaitForExit(500))
                     {
@@ -2438,20 +2442,20 @@ public static class NativeTuning
                     if (!finalOk)
                     {
                         if (inOut.Contains("hash does not match", StringComparison.OrdinalIgnoreCase))
-                            failureReason = "Semnatura sau hash neconcordant pe serverele Microsoft.";
+                            failureReason = isEn ? "Signature or hash mismatch on download servers." : "Semnatura sau hash neconcordant pe serverele Microsoft.";
                         else if (inOut.Contains("Access is denied", StringComparison.OrdinalIgnoreCase) || inErr.Contains("Access is denied", StringComparison.OrdinalIgnoreCase))
-                            failureReason = "Acces refuzat (necesita permisiuni de administrator).";
+                            failureReason = isEn ? "Access denied (administrator permissions required)." : "Acces refuzat (necesita permisiuni de administrator).";
                         else
-                            failureReason = "Pachetul nu a putut fi descarcat sau configurat automat.";
+                            failureReason = isEn ? "Package could not be downloaded or configured automatically." : "Pachetul nu a putut fi descarcat sau configurat automat.";
                     }
 
-                    onStepUpdate?.Invoke(4, finalOk ? $"Instalare {app.Name} validata pe dispozitiv." : $"Verificare instalare {app.Name}: {failureReason}");
-                    return (finalOk, finalOk ? $"Instalare {app.Name} finalizata cu succes!" : $"{app.Name}: {failureReason}", false);
+                    onStepUpdate?.Invoke(4, finalOk ? (isEn ? $"Installation of {app.Name} verified on device." : $"Instalare {app.Name} validata pe dispozitiv.") : (isEn ? $"Verifying installation of {app.Name}: {failureReason}" : $"Verificare instalare {app.Name}: {failureReason}"));
+                    return (finalOk, finalOk ? (isEn ? $"Installation of {app.Name} completed successfully!" : $"Instalare {app.Name} finalizata cu succes!") : $"{app.Name}: {failureReason}", false);
                 }
             }
             catch
             {
-                return (false, "Operatiune intrerupta de sistem.", false);
+                return (false, isEn ? "Operation interrupted by system." : "Operatiune intrerupta de sistem.", false);
             }
         });
     }
@@ -5674,11 +5678,12 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
         var logs = new List<string>();
         return await Task.Run(() =>
         {
+            bool isEn = NexLocale.CurrentLanguage == AppLanguage.En;
             try
             {
                 logs.Add(optimize 
-                    ? "Configurare efecte vizuale native (performanță maximă + fonturi clare)..."
-                    : "Resetare efecte vizuale native la valorile implicite...");
+                    ? (isEn ? "Configuring native visual effects (maximum performance + crisp fonts)..." : "Configurare efecte vizuale native (performanță maximă + fonturi clare)...")
+                    : (isEn ? "Resetting native visual effects to Windows defaults..." : "Resetare efecte vizuale native la valorile implicite..."));
 
                 // 1. Font Smoothing (ClearType) - always crisp
                 try
@@ -5692,7 +5697,7 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
                         byte[] mask = new byte[] { 0x9E, 0x3E, 0x07, 0x80, 0x12, 0x00, 0x00, 0x00 };
                         key.SetValue("UserPreferencesMask", mask, RegistryValueKind.Binary);
                     }
-                    logs.Add("  ✓ Netezire fonturi ClearType menținută la calitate nativă maximă.");
+                    logs.Add(isEn ? "  ✓ ClearType font smoothing preserved at maximum native quality." : "  ✓ Netezire fonturi ClearType menținută la calitate nativă maximă.");
                 }
                 catch (Exception ex)
                 {
@@ -5707,8 +5712,8 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
                         key.SetValue("MinAnimate", optimize ? "0" : "1", RegistryValueKind.String);
                     }
                     logs.Add(optimize 
-                        ? "  ✓ Animații ferestre la minimizare/maximizare dezactivate (răspuns instant)."
-                        : "  ✓ Animații ferestre resetate.");
+                        ? (isEn ? "  ✓ Window minimize/maximize animations disabled (instant response)." : "  ✓ Animații ferestre la minimizare/maximizare dezactivate (răspuns instant).")
+                        : (isEn ? "  ✓ Window animations reset to defaults." : "  ✓ Animații ferestre resetate."));
                 }
                 catch (Exception ex)
                 {
@@ -5724,8 +5729,8 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
                         key.SetValue("IconsOnly", 0, RegistryValueKind.DWord);
                     }
                     logs.Add(optimize 
-                        ? "  ✓ Animații taskbar dezactivate."
-                        : "  ✓ Animații taskbar reactivate.");
+                        ? (isEn ? "  ✓ Taskbar animations disabled." : "  ✓ Animații taskbar dezactivate.")
+                        : (isEn ? "  ✓ Taskbar animations reactivated." : "  ✓ Animații taskbar reactivate."));
                 }
                 catch (Exception ex)
                 {
@@ -5739,13 +5744,13 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
                     {
                         key.SetValue("VisualFXSetting", optimize ? 3 : 1, RegistryValueKind.DWord);
                     }
-                    logs.Add("  ✓ Modul de performanță personalizată înregistrat cu succes.");
+                    logs.Add(isEn ? "  ✓ Custom performance mode registered successfully." : "  ✓ Modul de performanță personalizată înregistrat cu succes.");
                 }
                 catch { }
 
                 logs.Add(optimize
-                    ? "SUCCESS: Efecte vizuale optimizate nativ (0 scripturi externe, fonturi clare)."
-                    : "SUCCESS: Efecte vizuale restaurate la valorile Windows.");
+                    ? (isEn ? "SUCCESS: Visual effects optimized natively (0 external scripts, crisp fonts)." : "SUCCESS: Efecte vizuale optimizate nativ (0 scripturi externe, fonturi clare).")
+                    : (isEn ? "SUCCESS: Visual effects restored to Windows defaults." : "SUCCESS: Efecte vizuale restaurate la valorile Windows."));
             }
             catch (Exception ex)
             {

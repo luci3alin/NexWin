@@ -1674,7 +1674,7 @@ public partial class MainWindow : Window
                 (NexLocale.T("modal_user_info_pc", "Nume Computer"), Environment.MachineName),
                 (NexLocale.T("modal_user_info_priv", "Statut Privilegii"), NexLocale.T("modal_user_info_priv_val", "Administrator / Rulare Elevată")),
                 (NexLocale.T("modal_user_info_os", "Sistem de Operare"), "Microsoft Windows 11 Pro (Build 26200)"),
-                (NexLocale.T("modal_user_info_app_ver", "Versiune Aplicație"), "NexWin v1.0.15 (Windows 11)")
+                (NexLocale.T("modal_user_info_app_ver", "Versiune Aplicație"), $"NexWin v{NativeTuning.CurrentVersion} (Windows 11)")
             };
 
             foreach (var (title, desc) in info)
