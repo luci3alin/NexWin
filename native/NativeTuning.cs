@@ -1231,26 +1231,97 @@ public static class NativeTuning
                 }
             }
 
-            // 3. Roblox
-            var robloxVersions = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Roblox", "Versions");
-            if (Directory.Exists(robloxVersions))
+            // 3. Roblox (Multi-strategy: Registry + LocalAppData + Program Files + Shortcuts)
+            try
             {
-                try
+                bool robloxFound = false;
+
+                // Strategy A: Registry Uninstall keys (User & Machine)
+                var uninstallHives = new[]
                 {
-                    var rExe = Directory.GetFiles(robloxVersions, "RobloxPlayerBeta.exe", SearchOption.AllDirectories).FirstOrDefault();
-                    if (rExe != null)
+                    (RegistryHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+                    (RegistryHive.LocalMachine, @"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+                    (RegistryHive.LocalMachine, @"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall")
+                };
+
+                foreach (var (hive, path) in uninstallHives)
+                {
+                    try
                     {
-                        foundGames["RobloxPlayerBeta.exe"] = new GamePriorityItem
+                        using var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
+                        using var rk = baseKey.OpenSubKey(path);
+                        if (rk != null)
                         {
-                            ExeName = "RobloxPlayerBeta.exe",
-                            DisplayName = "Roblox",
-                            FullPath = rExe,
-                            Description = "Roblox Player Engine"
-                        };
+                            foreach (var sub in rk.GetSubKeyNames())
+                            {
+                                if (sub.Contains("Roblox", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    using var sk = rk.OpenSubKey(sub);
+                                    var loc = sk?.GetValue("InstallLocation")?.ToString();
+                                    if (!string.IsNullOrEmpty(loc) && Directory.Exists(loc))
+                                    {
+                                        var beta = System.IO.Path.Combine(loc, "RobloxPlayerBeta.exe");
+                                        if (File.Exists(beta))
+                                        {
+                                            foundGames["RobloxPlayerBeta.exe"] = new GamePriorityItem
+                                            {
+                                                ExeName = "RobloxPlayerBeta.exe",
+                                                DisplayName = "Roblox",
+                                                FullPath = beta,
+                                                Description = "Roblox Player Engine"
+                                            };
+                                            robloxFound = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                    if (robloxFound) break;
+                }
+
+                // Strategy B: Folder scan across LocalAppData and ProgramFiles
+                if (!robloxFound)
+                {
+                    string[] robloxBases = new[]
+                    {
+                        System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Roblox", "Versions"),
+                        @"C:\Program Files (x86)\Roblox\Versions",
+                        @"C:\Program Files\Roblox\Versions"
+                    };
+
+                    foreach (var rBase in robloxBases)
+                    {
+                        if (Directory.Exists(rBase))
+                        {
+                            try
+                            {
+                                foreach (var vDir in Directory.GetDirectories(rBase))
+                                {
+                                    var rBeta = System.IO.Path.Combine(vDir, "RobloxPlayerBeta.exe");
+                                    if (File.Exists(rBeta))
+                                    {
+                                        foundGames["RobloxPlayerBeta.exe"] = new GamePriorityItem
+                                        {
+                                            ExeName = "RobloxPlayerBeta.exe",
+                                            DisplayName = "Roblox",
+                                            FullPath = rBeta,
+                                            Description = "Roblox Player Engine"
+                                        };
+                                        robloxFound = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                        if (robloxFound) break;
                     }
                 }
-                catch { }
             }
+            catch { }
 
             // 4. FiveM Scanning
             var fiveM = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FiveM", "FiveM.exe");
@@ -1316,7 +1387,119 @@ public static class NativeTuning
                 catch { }
             }
 
-            // 7. Custom Games previously added by user
+            // 7. Generic Drives & Repack Games (D:\Games, C:\Games, D:\Jeux, GOG Games, etc.)
+            try
+            {
+                var readyDrives = DriveInfo.GetDrives()
+                    .Where(d => d.IsReady && (d.DriveType == DriveType.Fixed || d.DriveType == DriveType.Removable))
+                    .ToList();
+
+                string[] commonGameDirs = new[]
+                {
+                    "Games", "Jeux", "Spiele", "Jogos", "Juegos", "GOG Games", "GOG Galaxy\\Games",
+                    "Epic Games", "XboxGames", "DODI-Repacks", "FitGirl Repacks",
+                    "Program Files\\Games", "Program Files (x86)\\Games"
+                };
+
+                foreach (var drive in readyDrives)
+                {
+                    foreach (var cDir in commonGameDirs)
+                    {
+                        var fullGameRoot = System.IO.Path.Combine(drive.RootDirectory.FullName, cDir);
+                        if (!Directory.Exists(fullGameRoot)) continue;
+
+                        try
+                        {
+                            foreach (var gameFolder in Directory.GetDirectories(fullGameRoot))
+                            {
+                                TryDetectAndAddGameFromFolder(gameFolder, foundGames);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+
+            // 8. Desktop & Start Menu Shortcuts Scanner
+            try
+            {
+                var shortcutDirs = new[]
+                {
+                    Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory),
+                    Environment.GetFolderPath(Environment.SpecialFolder.Programs),
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms)
+                };
+
+                foreach (var sDir in shortcutDirs)
+                {
+                    if (!Directory.Exists(sDir)) continue;
+                    try
+                    {
+                        var lnks = Directory.GetFiles(sDir, "*.lnk", SearchOption.AllDirectories);
+                        foreach (var lnk in lnks)
+                        {
+                            try
+                            {
+                                var target = ResolveShortcutTarget(lnk);
+                                if (string.IsNullOrEmpty(target) || !File.Exists(target) || !target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                                    continue;
+
+                                var targetLower = target.ToLowerInvariant();
+                                var targetName = System.IO.Path.GetFileName(target);
+
+                                // Special check for Roblox shortcut
+                                if (targetName.Equals("RobloxPlayerBeta.exe", StringComparison.OrdinalIgnoreCase) ||
+                                    targetName.Equals("RobloxPlayerLauncher.exe", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var pBeta = targetName.Equals("RobloxPlayerBeta.exe", StringComparison.OrdinalIgnoreCase)
+                                        ? target
+                                        : System.IO.Path.Combine(System.IO.Path.GetDirectoryName(target) ?? "", "RobloxPlayerBeta.exe");
+
+                                    if (File.Exists(pBeta))
+                                    {
+                                        foundGames["RobloxPlayerBeta.exe"] = new GamePriorityItem
+                                        {
+                                            ExeName = "RobloxPlayerBeta.exe",
+                                            DisplayName = "Roblox",
+                                            FullPath = pBeta,
+                                            Description = "Roblox Player Engine"
+                                        };
+                                    }
+                                    continue;
+                                }
+
+                                bool isGamePath = targetLower.Contains(@"\games\") ||
+                                                  targetLower.Contains(@"\jeux\") ||
+                                                  targetLower.Contains(@"\steamapps\common\") ||
+                                                  targetLower.Contains(@"\riot games\") ||
+                                                  targetLower.Contains(@"\epic games\") ||
+                                                  targetLower.Contains(@"\gog games\") ||
+                                                  targetLower.Contains(@"\fitgirl") ||
+                                                  targetLower.Contains(@"\dodi");
+
+                                if (isGamePath && !foundGames.ContainsKey(targetName))
+                                {
+                                    string dName = System.IO.Path.GetFileNameWithoutExtension(lnk);
+                                    foundGames[targetName] = new GamePriorityItem
+                                    {
+                                        ExeName = targetName,
+                                        DisplayName = dName,
+                                        FullPath = target,
+                                        Description = $"Shortcut · {dName}"
+                                    };
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            // 9. Custom Games previously added by user
             if (File.Exists(CustomGamesJsonPath))
             {
                 try
@@ -1418,6 +1601,179 @@ public static class NativeTuning
         {
             return false;
         }
+    }
+
+    private static void TryDetectAndAddGameFromFolder(string folder, Dictionary<string, GamePriorityItem> foundGames)
+    {
+        try
+        {
+            if (!Directory.Exists(folder)) return;
+            var folderName = System.IO.Path.GetFileName(folder);
+            if (string.IsNullOrWhiteSpace(folderName)) return;
+
+            // Exclude non-game folders
+            var lowerFolder = folderName.ToLowerInvariant();
+            if (lowerFolder.Contains("redist") || lowerFolder.Contains("directx") || lowerFolder.Contains("commonredist") ||
+                lowerFolder.StartsWith("$") || lowerFolder.Contains("system volume information") || lowerFolder.Contains("recovery"))
+                return;
+
+            // Clean up repack tags from folder name
+            string cleanName = folderName;
+            string[] tagsToStrip = new[] { "[FitGirl Repack]", "[DODI Repack]", "FitGirl Repack", "DODI Repack", "[FitGirl]", "[DODI]", "Complete Edition", "Digital Deluxe Edition", "GOTY Edition", "Game of the Year Edition", "GOTY", "Repack", "[GOG]" };
+            foreach (var tag in tagsToStrip)
+            {
+                int idx = cleanName.IndexOf(tag, StringComparison.OrdinalIgnoreCase);
+                if (idx >= 0) cleanName = cleanName.Remove(idx, tag.Length).Trim();
+            }
+            cleanName = cleanName.Trim('-', '_', ' ', '[', ']');
+            if (string.IsNullOrWhiteSpace(cleanName)) cleanName = folderName;
+
+            var candidates = new List<string>();
+            try
+            {
+                candidates.AddRange(Directory.GetFiles(folder, "*.exe", SearchOption.TopDirectoryOnly));
+            }
+            catch { }
+
+            // Subdirectories (binaries, win64, etc.)
+            try
+            {
+                foreach (var sub in Directory.GetDirectories(folder))
+                {
+                    var subName = System.IO.Path.GetFileName(sub).ToLowerInvariant();
+                    if (subName is "bin" or "binaries" or "game" or "x64" or "win64" or "shipping")
+                    {
+                        try { candidates.AddRange(Directory.GetFiles(sub, "*.exe", SearchOption.AllDirectories)); } catch { }
+                    }
+                    else
+                    {
+                        try
+                        {
+                            foreach (var subSub in Directory.GetDirectories(sub))
+                            {
+                                var s2 = System.IO.Path.GetFileName(subSub).ToLowerInvariant();
+                                if (s2 is "bin" or "binaries" or "win64" or "x64" or "shipping")
+                                {
+                                    try { candidates.AddRange(Directory.GetFiles(subSub, "*.exe", SearchOption.TopDirectoryOnly)); } catch { }
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+
+            var validExes = candidates
+                .Where(f =>
+                {
+                    var fn = System.IO.Path.GetFileName(f).ToLowerInvariant();
+                    return !fn.Contains("unins") &&
+                           !fn.Contains("setup") &&
+                           !fn.Contains("crash") &&
+                           !fn.Contains("redist") &&
+                           !fn.Contains("vcredist") &&
+                           !fn.Contains("dxsetup") &&
+                           !fn.Contains("directx") &&
+                           !fn.Contains("patch") &&
+                           !fn.Contains("unitycrash") &&
+                           !fn.Contains("report") &&
+                           !fn.Contains("dotnet") &&
+                           !fn.Contains("quickbms") &&
+                           !fn.Contains("verify") &&
+                           !fn.Contains("md5") &&
+                           !fn.Contains("crc") &&
+                           !fn.Contains("diagnostic");
+                })
+                .OrderByDescending(f =>
+                {
+                    try
+                    {
+                        var fi = new FileInfo(f);
+                        long len = fi.Length;
+                        var fn = System.IO.Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
+                        if (fn.Contains("shipping") || fn.Contains("game")) len += 50_000_000;
+                        if (cleanName.ToLowerInvariant().Contains(fn) || fn.Contains(cleanName.ToLowerInvariant())) len += 100_000_000;
+                        return len;
+                    }
+                    catch { return 0L; }
+                })
+                .ToList();
+
+            if (validExes.Count > 0)
+            {
+                var bestExe = validExes[0];
+                var exeName = System.IO.Path.GetFileName(bestExe);
+                if (!foundGames.ContainsKey(exeName))
+                {
+                    foundGames[exeName] = new GamePriorityItem
+                    {
+                        ExeName = exeName,
+                        DisplayName = cleanName,
+                        FullPath = bestExe,
+                        Description = $"Installed Game · {cleanName}"
+                    };
+                }
+            }
+        }
+        catch { }
+    }
+
+    [ComImport]
+    [Guid("00021401-0000-0000-C000-000000000046")]
+    private class ShellLinkClass { }
+
+    [ComImport]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("000214F9-0000-0000-C000-000000000046")]
+    private interface IShellLinkW
+    {
+        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cchMaxPath, out IntPtr pfd, int fFlags);
+        void GetIDList(out IntPtr ppidl);
+        void SetIDList(IntPtr pidl);
+        void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cchMaxName);
+        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+        void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszDir, int cchMaxPath);
+        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
+        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszArgs, int cchMaxPath);
+        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
+        void GetHotkey(out short pwHotkey);
+        void SetHotkey(short wHotkey);
+        void GetShowCmd(out int piShowCmd);
+        void SetShowCmd(int iShowCmd);
+        void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cchIconPath, out int piIcon);
+        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
+        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, int dwReserved);
+        void Resolve(IntPtr hwnd, int fFlags);
+        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
+    }
+
+    [ComImport]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    [Guid("0000010b-0000-0000-C000-000000000046")]
+    private interface IPersistFile
+    {
+        void GetClassID(out Guid pClassID);
+        void IsDirty();
+        void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, int dwMode);
+        void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, [MarshalAs(UnmanagedType.Bool)] bool fRemember);
+        void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
+        void GetCurFile([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder ppszFileName);
+    }
+
+    public static string? ResolveShortcutTarget(string shortcutPath)
+    {
+        try
+        {
+            var link = (IShellLinkW)new ShellLinkClass();
+            ((IPersistFile)link).Load(shortcutPath, 0);
+            var sb = new StringBuilder(1024);
+            link.GetPath(sb, sb.Capacity, out _, 0);
+            string target = sb.ToString();
+            if (!string.IsNullOrEmpty(target) && File.Exists(target)) return target;
+        }
+        catch { }
+        return null;
     }
 
     public static bool CheckGameHighPriority(string exeName)
