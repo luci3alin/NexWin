@@ -4636,6 +4636,31 @@ public static class NativeTuning
         catch { }
     }
 
+    public static string GetLiveWallpaperMonitorMode()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\NexWin", false);
+            if (key != null)
+            {
+                var val = key.GetValue("LiveWallpaperMonitorMode")?.ToString();
+                if (!string.IsNullOrEmpty(val)) return val;
+            }
+        }
+        catch { }
+        return "individual";
+    }
+
+    public static void SetLiveWallpaperMonitorMode(string mode)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(@"Software\NexWin", true);
+            key?.SetValue("LiveWallpaperMonitorMode", mode ?? "individual", RegistryValueKind.String);
+        }
+        catch { }
+    }
+
     public class AppUpgradeDetail
     {
         public string Name { get; set; } = "";

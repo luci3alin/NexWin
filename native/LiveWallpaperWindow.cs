@@ -48,6 +48,12 @@ public class LiveWallpaperWindow : Window
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int Left, Top, Right, Bottom; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT { public int X; public int Y; }
+
+    [DllImport("user32.dll")]
+    private static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
@@ -109,6 +115,82 @@ public class LiveWallpaperWindow : Window
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
+    // ── Multi-monitor enumeration ──────────────────────────────────────────
+    [DllImport("user32.dll")]
+    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, EnumMonitorsDelegate lpfnEnum, IntPtr dwData);
+
+    private delegate bool EnumMonitorsDelegate(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFOEX
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public int dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string szDevice;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetMonitorInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfoEx(IntPtr hMonitor, ref MONITORINFOEX lpmi);
+
+    public class MonitorBounds
+    {
+        public int Left, Top, Right, Bottom;
+        public string DeviceName = "";
+        public bool IsPrimary;
+        public int Width => Right - Left;
+        public int Height => Bottom - Top;
+        public override string ToString() => $"{DeviceName} {Width}×{Height} @({Left},{Top}){(IsPrimary ? " [Primary]" : "")}";
+    }
+
+    /// <summary>Enumerate all connected monitors with their physical pixel bounds.</summary>
+    public static List<MonitorBounds> GetAllMonitors()
+    {
+        var monitors = new List<MonitorBounds>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData) =>
+        {
+            var info = new MONITORINFOEX();
+            info.cbSize = Marshal.SizeOf<MONITORINFOEX>();
+            if (GetMonitorInfoEx(hMonitor, ref info))
+            {
+                monitors.Add(new MonitorBounds
+                {
+                    Left = info.rcMonitor.Left,
+                    Top = info.rcMonitor.Top,
+                    Right = info.rcMonitor.Right,
+                    Bottom = info.rcMonitor.Bottom,
+                    DeviceName = info.szDevice ?? "",
+                    IsPrimary = (info.dwFlags & 1) != 0
+                });
+            }
+            return true;
+        }, IntPtr.Zero);
+        // Sort: primary first, then by Left position
+        monitors.Sort((a, b) =>
+        {
+            if (a.IsPrimary != b.IsPrimary) return a.IsPrimary ? -1 : 1;
+            return a.Left.CompareTo(b.Left);
+        });
+        return monitors;
+    }
+
+    // ── Monitor mode ───────────────────────────────────────────────────────
+    public static LiveWallpaperWindow? Instance => _instance;
+    public static string CurrentMode { get; private set; } = "individual";
+
+    public static void SetDisplayMode(string mode)
+    {
+        CurrentMode = mode;
+        NativeTuning.SetLiveWallpaperMonitorMode(mode);
+        if (_instance != null && _instance.IsLoaded)
+        {
+            _instance.UpdateDisplayMode(mode);
+        }
+    }
+
     private static LiveWallpaperWindow? _instance;
     private static IntPtr _hiddenWorkerW = IntPtr.Zero;
     public static bool IsRunning => _instance != null && _instance.IsLoaded;
@@ -123,6 +205,7 @@ public class LiveWallpaperWindow : Window
     private DispatcherTimer? _gameWatcherTimer;
     private readonly List<BitmapSource> _gifFrames = new();
     private readonly List<int> _gifDelays = new();
+    private readonly List<Image> _gifImages = new();
     private int _currentGifIndex = 0;
     private bool _isAttached = false;
 
@@ -141,22 +224,23 @@ public class LiveWallpaperWindow : Window
     public LiveWallpaperWindow(string filePath)
     {
         CurrentPresetOrFile = filePath;
-        Log($"Initializing LiveWallpaperWindow for: {filePath}");
+        CurrentMode = NativeTuning.GetLiveWallpaperMonitorMode();
+        Log($"Initializing LiveWallpaperWindow for: {filePath} [Mode: {CurrentMode}]");
 
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         AllowsTransparency = false;
         Background = Brushes.Black;
-        Left = 0;
-        Top = 0;
-        Width = SystemParameters.PrimaryScreenWidth;
-        Height = SystemParameters.PrimaryScreenHeight;
+        Left = SystemParameters.VirtualScreenLeft;
+        Top = SystemParameters.VirtualScreenTop;
+        Width = SystemParameters.VirtualScreenWidth;
+        Height = SystemParameters.VirtualScreenHeight;
 
         _rootGrid = new Grid
         {
-            Width = Width,
-            Height = Height,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
             Background = Brushes.Black
         };
         Content = _rootGrid;
@@ -250,6 +334,7 @@ public class LiveWallpaperWindow : Window
 
             _gifFrames.Clear();
             _gifDelays.Clear();
+            _gifImages.Clear();
             _rootGrid.Children.Clear();
         }
         catch { }
@@ -347,11 +432,12 @@ public class LiveWallpaperWindow : Window
 
             if (GetWindowRect(fg, out RECT rect))
             {
+                int fgW = rect.Right - rect.Left;
+                int fgH = rect.Bottom - rect.Top;
                 int screenW = (int)SystemParameters.PrimaryScreenWidth;
                 int screenH = (int)SystemParameters.PrimaryScreenHeight;
 
-                bool isFullScreen = (rect.Left <= 0 && rect.Top <= 0 &&
-                                     rect.Right >= (screenW - 5) && rect.Bottom >= (screenH - 5));
+                bool isFullScreen = (fgW >= (screenW - 5) && fgH >= (screenH - 5));
 
                 if (isFullScreen)
                 {
@@ -464,42 +550,38 @@ public class LiveWallpaperWindow : Window
 <head>
 <meta charset=""utf-8"">
 <style>
-  * {{ margin: 0; padding: 0; overflow: hidden; }}
-  html, body {{ width: 100vw; height: 100vh; background: #000; }}
-  video {{
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    object-fit: cover;
-    pointer-events: none;
-    display: block;
-  }}
+  * {{ margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; }}
+  html, body {{ width: 100%; height: 100%; background: #000; overflow: hidden; position: relative; }}
+  .video-layer {{ position: absolute; overflow: hidden; background: #000; }}
+  video {{ width: 100%; height: 100%; object-fit: cover; pointer-events: none; display: block; }}
 </style>
 </head>
 <body>
-  <video id=""vid"" src=""{fileUri}"" autoplay loop muted playsinline></video>
+  <div id=""video-root"">
+{BuildVideoContainersHtml(fileUri, CurrentMode)}
+  </div>
   <script>
-    const v = document.getElementById('vid');
-    if (v) {{
-      v.play().catch(e => console.error(e));
+    function getAllVideos() {{
+      return Array.from(document.querySelectorAll('video'));
     }}
     window.changeVideo = function(newSrc) {{
-      if (v) {{
+      getAllVideos().forEach(v => {{
         v.src = newSrc;
         v.currentTime = 0;
-        v.play().catch(e => console.error(e));
-      }}
+        v.play().catch(e => {{}});
+      }});
     }};
     window.pauseVideo = function() {{
-      if (v) {{
-        v.pause();
-      }}
+      getAllVideos().forEach(v => v.pause());
     }};
     window.resumeVideo = function() {{
-      if (v) {{
-        v.play().catch(e => console.error(e));
+      getAllVideos().forEach(v => v.play().catch(e => {{}}));
+    }};
+    window.setMode = function(htmlContent) {{
+      const root = document.getElementById('video-root');
+      if (root) {{
+        root.innerHTML = htmlContent;
+        getAllVideos().forEach(v => v.play().catch(e => {{}}));
       }}
     }};
   </script>
@@ -550,6 +632,57 @@ public class LiveWallpaperWindow : Window
         }
     }
 
+    public static string BuildVideoContainersHtml(string fileUri, string mode)
+    {
+        var monitors = GetAllMonitors();
+        if (monitors.Count <= 1 || mode.Equals("stretch", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"    <div class=\"video-layer\" style=\"left:0;top:0;width:100%;height:100%;\"><video src=\"{fileUri}\" autoplay loop muted playsinline></video></div>";
+        }
+
+        int virtLeft = (int)SystemParameters.VirtualScreenLeft;
+        int virtTop = (int)SystemParameters.VirtualScreenTop;
+
+        if (int.TryParse(mode, out int specificIndex))
+        {
+            if (specificIndex >= 0 && specificIndex < monitors.Count)
+            {
+                var m = monitors[specificIndex];
+                int relX = m.Left - virtLeft;
+                int relY = m.Top - virtTop;
+                return $"    <div class=\"video-layer\" style=\"left:{relX}px;top:{relY}px;width:{m.Width}px;height:{m.Height}px;\"><video src=\"{fileUri}\" autoplay loop muted playsinline></video></div>";
+            }
+        }
+
+        var sb = new StringBuilder();
+        foreach (var m in monitors)
+        {
+            int relX = m.Left - virtLeft;
+            int relY = m.Top - virtTop;
+            sb.AppendLine($"    <div class=\"video-layer\" style=\"left:{relX}px;top:{relY}px;width:{m.Width}px;height:{m.Height}px;\"><video src=\"{fileUri}\" autoplay loop muted playsinline></video></div>");
+        }
+        return sb.ToString();
+    }
+
+    public void UpdateDisplayMode(string newMode)
+    {
+        CurrentMode = newMode;
+        NativeTuning.SetLiveWallpaperMonitorMode(newMode);
+        Log($"UpdateDisplayMode called: {newMode}");
+
+        if (_webView?.CoreWebView2 != null && !string.IsNullOrEmpty(CurrentPresetOrFile))
+        {
+            string fileUri = new Uri(CurrentPresetOrFile).AbsoluteUri;
+            string containers = BuildVideoContainersHtml(fileUri, newMode);
+            string escaped = containers.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\r", "").Replace("\n", "");
+            _webView.CoreWebView2.ExecuteScriptAsync($"if (window.setMode) {{ window.setMode('{escaped}'); }}");
+        }
+        else if (_gifFrames.Count > 0)
+        {
+            SetupNativeGifLayout(newMode);
+        }
+    }
+
     private void SetupNativeGifPlayback(string filePath)
     {
         try
@@ -583,24 +716,19 @@ public class LiveWallpaperWindow : Window
 
             if (_gifFrames.Count == 0) return;
 
-            var gifImage = new Image
-            {
-                Stretch = Stretch.UniformToFill,
-                Source = _gifFrames[0],
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                Width = Width,
-                Height = Height
-            };
-            _rootGrid.Children.Add(gifImage);
+            SetupNativeGifLayout(CurrentMode);
 
             _gifTimer = new DispatcherTimer(DispatcherPriority.Render);
             _gifTimer.Interval = TimeSpan.FromMilliseconds(_gifDelays[0]);
             _gifTimer.Tick += (s, e) =>
             {
-                if (_gifFrames.Count == 0) return;
+                if (_gifFrames.Count == 0 || _gifImages.Count == 0) return;
                 _currentGifIndex = (_currentGifIndex + 1) % _gifFrames.Count;
-                gifImage.Source = _gifFrames[_currentGifIndex];
+                var currentFrame = _gifFrames[_currentGifIndex];
+                for (int i = 0; i < _gifImages.Count; i++)
+                {
+                    _gifImages[i].Source = currentFrame;
+                }
                 _gifTimer.Interval = TimeSpan.FromMilliseconds(_gifDelays[_currentGifIndex]);
             };
             _gifTimer.Start();
@@ -611,6 +739,78 @@ public class LiveWallpaperWindow : Window
             Log($"SetupNativeGifPlayback exception: {ex.Message}");
             StopLive();
         }
+    }
+
+    private void SetupNativeGifLayout(string mode)
+    {
+        _rootGrid.Children.Clear();
+        _gifImages.Clear();
+        if (_gifFrames.Count == 0) return;
+
+        var monitors = GetAllMonitors();
+        var currentFrame = _gifFrames[_currentGifIndex % _gifFrames.Count];
+
+        if (monitors.Count <= 1 || mode.Equals("stretch", StringComparison.OrdinalIgnoreCase))
+        {
+            var gifImage = new Image
+            {
+                Stretch = Stretch.UniformToFill,
+                Source = currentFrame,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch
+            };
+            _gifImages.Add(gifImage);
+            _rootGrid.Children.Add(gifImage);
+            return;
+        }
+
+        var canvas = new Canvas
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            ClipToBounds = true
+        };
+
+        int virtLeft = (int)SystemParameters.VirtualScreenLeft;
+        int virtTop = (int)SystemParameters.VirtualScreenTop;
+
+        if (int.TryParse(mode, out int specificIndex))
+        {
+            if (specificIndex >= 0 && specificIndex < monitors.Count)
+            {
+                var m = monitors[specificIndex];
+                var gifImage = new Image
+                {
+                    Stretch = Stretch.UniformToFill,
+                    Source = currentFrame,
+                    Width = m.Width,
+                    Height = m.Height
+                };
+                Canvas.SetLeft(gifImage, m.Left - virtLeft);
+                Canvas.SetTop(gifImage, m.Top - virtTop);
+                _gifImages.Add(gifImage);
+                canvas.Children.Add(gifImage);
+            }
+        }
+        else
+        {
+            foreach (var m in monitors)
+            {
+                var gifImage = new Image
+                {
+                    Stretch = Stretch.UniformToFill,
+                    Source = currentFrame,
+                    Width = m.Width,
+                    Height = m.Height
+                };
+                Canvas.SetLeft(gifImage, m.Left - virtLeft);
+                Canvas.SetTop(gifImage, m.Top - virtTop);
+                _gifImages.Add(gifImage);
+                canvas.Children.Add(gifImage);
+            }
+        }
+
+        _rootGrid.Children.Add(canvas);
     }
 
     private static IntPtr FindProgmanHandle()
@@ -785,18 +985,10 @@ public class LiveWallpaperWindow : Window
                 }
             }
 
-            int screenW = (int)SystemParameters.PrimaryScreenWidth;
-            int screenH = (int)SystemParameters.PrimaryScreenHeight;
-            if (defViewInProgman != IntPtr.Zero && GetWindowRect(defViewInProgman, out RECT rcDef))
-            {
-                int dw = rcDef.Right - rcDef.Left;
-                int dh = rcDef.Bottom - rcDef.Top;
-                if (dw > 0 && dh > 0)
-                {
-                    screenW = dw;
-                    screenH = dh;
-                }
-            }
+            int screenX = (int)SystemParameters.VirtualScreenLeft;
+            int screenY = (int)SystemParameters.VirtualScreenTop;
+            int screenW = (int)SystemParameters.VirtualScreenWidth;
+            int screenH = (int)SystemParameters.VirtualScreenHeight;
 
             IntPtr targetParent = IntPtr.Zero;
             IntPtr insertAfter = IntPtr.Zero;
@@ -847,24 +1039,47 @@ public class LiveWallpaperWindow : Window
 
                 SetParent(hWnd, targetParent);
 
+                int finalX = screenX;
+                int finalY = screenY;
+                int finalW = screenW;
+                int finalH = screenH;
+
+                var pt = new POINT { X = screenX, Y = screenY };
+                if (ScreenToClient(targetParent, ref pt))
+                {
+                    finalX = pt.X;
+                    finalY = pt.Y;
+                }
+
+                if (GetWindowRect(targetParent, out RECT rcTarget))
+                {
+                    int pW = rcTarget.Right - rcTarget.Left;
+                    int pH = rcTarget.Bottom - rcTarget.Top;
+                    if (pW > 0 && pH > 0)
+                    {
+                        finalW = pW;
+                        finalH = pH;
+                    }
+                }
+
                 if (insertAfter != IntPtr.Zero)
                 {
-                    SetWindowPos(hWnd, insertAfter, 0, 0, screenW, screenH, SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+                    SetWindowPos(hWnd, insertAfter, finalX, finalY, finalW, finalH, SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
                 }
                 else
                 {
-                    SetWindowPos(hWnd, HWND_BOTTOM, 0, 0, screenW, screenH, SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+                    SetWindowPos(hWnd, HWND_BOTTOM, finalX, finalY, finalW, finalH, SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
                 }
 
                 ShowWindow(hWnd, SW_SHOW);
                 EnsureDesktopIconsOnTop();
                 _isAttached = true;
                 DisableChildInput();
-                Log($"Desktop attachment completed. Screen: {screenW}x{screenH}");
+                Log($"Desktop attachment completed. Pos: ({finalX},{finalY}) Size: {finalW}x{finalH}");
             }
             else
             {
-                SetWindowPos(hWnd, HWND_BOTTOM, 0, 0, screenW, screenH, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                SetWindowPos(hWnd, HWND_BOTTOM, screenX, screenY, screenW, screenH, SWP_NOACTIVATE | SWP_SHOWWINDOW);
                 EnsureDesktopIconsOnTop();
                 _isAttached = true;
             }

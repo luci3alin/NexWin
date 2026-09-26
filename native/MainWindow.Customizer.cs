@@ -374,6 +374,71 @@ public partial class MainWindow : Window
 
             engInfo.Children.Add(pauseRow);
 
+            var monitors = LiveWallpaperWindow.GetAllMonitors();
+            if (monitors.Count > 1)
+            {
+                var monitorRow = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Margin = new Thickness(0, 10, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+
+                monitorRow.Children.Add(new TextBlock
+                {
+                    Text = $"🖥️ {NexLocale.T("cust_live_monitors_detected")} ({monitors.Count}):",
+                    FontSize = 11,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = MutedBrush,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 10, 0)
+                });
+
+                string currentMode = NativeTuning.GetLiveWallpaperMonitorMode();
+                var pillPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+                void AddModePill(string modeKey, string label)
+                {
+                    bool isSelected = currentMode.Equals(modeKey, StringComparison.OrdinalIgnoreCase);
+                    var pill = new Border
+                    {
+                        Background = isSelected ? new SolidColorBrush(Color.FromRgb(15, 38, 74)) : new SolidColorBrush(Color.FromRgb(18, 26, 40)),
+                        BorderBrush = isSelected ? new SolidColorBrush(Color.FromRgb(37, 99, 235)) : new SolidColorBrush(Color.FromRgb(30, 41, 59)),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(5),
+                        Padding = new Thickness(9, 3, 9, 3),
+                        Margin = new Thickness(0, 0, 6, 0),
+                        Cursor = Cursors.Hand
+                    };
+                    pill.Child = new TextBlock
+                    {
+                        Text = label,
+                        FontSize = 10.5,
+                        FontWeight = isSelected ? FontWeights.Bold : FontWeights.Normal,
+                        Foreground = isSelected ? CyanBrush : TextBrush
+                    };
+                    pill.MouseLeftButtonUp += (_, _) =>
+                    {
+                        NativeTuning.SetLiveWallpaperMonitorMode(modeKey);
+                        LiveWallpaperWindow.SetDisplayMode(modeKey);
+                        ShowCustomizer();
+                    };
+                    pillPanel.Children.Add(pill);
+                }
+
+                AddModePill("individual", NexLocale.T("cust_live_mode_individual"));
+                AddModePill("stretch", NexLocale.T("cust_live_mode_stretch"));
+                for (int mIdx = 0; mIdx < monitors.Count; mIdx++)
+                {
+                    var m = monitors[mIdx];
+                    string mName = m.IsPrimary ? $"{NexLocale.Format("cust_live_mode_monitor", mIdx + 1)} ({NexLocale.T("cust_live_primary")})" : NexLocale.Format("cust_live_mode_monitor", mIdx + 1);
+                    AddModePill(mIdx.ToString(), mName);
+                }
+
+                monitorRow.Children.Add(pillPanel);
+                engInfo.Children.Add(monitorRow);
+            }
+
             Grid.SetColumn(engInfo, 0);
             engGrid.Children.Add(engInfo);
 
