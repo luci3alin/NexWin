@@ -18,7 +18,7 @@ namespace NexWin.Native;
 
 public static class NativeTuning
 {
-    public const string CurrentVersion = "1.0.88";
+    public const string CurrentVersion = "1.0.89";
 
     public static void TrimWorkingSet()
     {
@@ -605,6 +605,26 @@ public static class NativeTuning
 
     private static readonly ConcurrentDictionary<string, ImageSource> AppIconCache = new(StringComparer.OrdinalIgnoreCase);
 
+    public static bool SafeFileExists(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var clean = path.Trim('\"', ' ', '\'');
+            if (clean.Length >= 3 && clean[1] == ':' && (clean[2] == '\\' || clean[2] == '/'))
+            {
+                var driveLetter = clean.Substring(0, 1);
+                var drive = new DriveInfo(driveLetter);
+                if (!drive.IsReady) return false;
+            }
+            return File.Exists(clean);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static ImageSource? GetIconForFile(string? filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath)) return null;
@@ -613,10 +633,10 @@ public static class NativeTuning
 
         try
         {
-            if (File.Exists(cleanPath))
+            if (SafeFileExists(cleanPath))
             {
                 using var sysIcon = System.Drawing.Icon.ExtractAssociatedIcon(cleanPath);
-                if (sysIcon != null)
+                if (sysIcon != null && sysIcon.Handle != IntPtr.Zero)
                 {
                     var bs = Imaging.CreateBitmapSourceFromHIcon(
                         sysIcon.Handle,
@@ -1196,17 +1216,19 @@ public static class NativeTuning
             try
             {
                 var drivesToCheck = DriveInfo.GetDrives()
-                    .Where(d => d.IsReady && (d.DriveType == DriveType.Fixed || d.DriveType == DriveType.Removable))
-                    .Select(d => d.RootDirectory.FullName)
+                    .Where(d => { try { return d.IsReady && (d.DriveType == DriveType.Fixed || d.DriveType == DriveType.Removable); } catch { return false; } })
+                    .Select(d => { try { return d.RootDirectory.FullName; } catch { return null; } })
+                    .Where(p => !string.IsNullOrEmpty(p))
                     .ToList();
 
                 foreach (var dRoot in drivesToCheck)
                 {
+                    if (string.IsNullOrEmpty(dRoot)) continue;
                     var riotDir = System.IO.Path.Combine(dRoot, "Riot Games");
                     if (Directory.Exists(riotDir))
                     {
                         var lol = System.IO.Path.Combine(riotDir, "League of Legends", "LeagueClient.exe");
-                        if (File.Exists(lol) && !foundGames.ContainsKey("LeagueClient.exe"))
+                        if (SafeFileExists(lol) && !foundGames.ContainsKey("LeagueClient.exe"))
                         {
                             foundGames["LeagueClient.exe"] = new GamePriorityItem
                             {
@@ -1219,7 +1241,7 @@ public static class NativeTuning
 
                         var val1 = System.IO.Path.Combine(riotDir, "VALORANT", "live", "ShooterGame", "Binaries", "Win64", "VALORANT-Win64-Shipping.exe");
                         var val2 = System.IO.Path.Combine(riotDir, "VALORANT", "live", "VALORANT.exe");
-                        if (File.Exists(val1) && !foundGames.ContainsKey("VALORANT-Win64-Shipping.exe"))
+                        if (SafeFileExists(val1) && !foundGames.ContainsKey("VALORANT-Win64-Shipping.exe"))
                         {
                             foundGames["VALORANT-Win64-Shipping.exe"] = new GamePriorityItem
                             {
@@ -1229,7 +1251,7 @@ public static class NativeTuning
                                 Description = "Riot Games Vanguard Unreal Engine"
                             };
                         }
-                        else if (File.Exists(val2) && !foundGames.ContainsKey("VALORANT.exe"))
+                        else if (SafeFileExists(val2) && !foundGames.ContainsKey("VALORANT.exe"))
                         {
                             foundGames["VALORANT.exe"] = new GamePriorityItem
                             {
@@ -1265,9 +1287,8 @@ public static class NativeTuning
                             var cmd = pKey.GetValue("")?.ToString();
                             if (!string.IsNullOrEmpty(cmd))
                             {
-                                var clean = cmd.Split('\"', StringSplitOptions.RemoveEmptyEntries)
-                                               .FirstOrDefault(s => s.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
-                                if (!string.IsNullOrEmpty(clean) && File.Exists(clean))
+                                var clean = ExtractExePath(cmd);
+                                if (!string.IsNullOrEmpty(clean) && SafeFileExists(clean))
                                 {
                                     var exeName = System.IO.Path.GetFileName(clean);
                                     foundGames[exeName] = new GamePriorityItem
@@ -1511,7 +1532,7 @@ public static class NativeTuning
             try
             {
                 var readyDrives = DriveInfo.GetDrives()
-                    .Where(d => d.IsReady && (d.DriveType == DriveType.Fixed || d.DriveType == DriveType.Removable))
+                    .Where(d => { try { return d.IsReady && (d.DriveType == DriveType.Fixed || d.DriveType == DriveType.Removable); } catch { return false; } })
                     .ToList();
 
                 string[] commonGameDirs = new[]
@@ -1557,13 +1578,12 @@ public static class NativeTuning
                     if (!Directory.Exists(sDir)) continue;
                     try
                     {
-                        var lnks = Directory.GetFiles(sDir, "*.lnk", SearchOption.AllDirectories);
-                        foreach (var lnk in lnks)
+                        foreach (var lnk in EnumerateShortcutsSafely(sDir, 3))
                         {
                             try
                             {
                                 var target = ResolveShortcutTarget(lnk);
-                                if (string.IsNullOrEmpty(target) || !File.Exists(target) || !target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                                if (string.IsNullOrEmpty(target) || !SafeFileExists(target) || !target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                                     continue;
 
                                 var targetLower = target.ToLowerInvariant();
@@ -1577,7 +1597,7 @@ public static class NativeTuning
                                         ? target
                                         : System.IO.Path.Combine(System.IO.Path.GetDirectoryName(target) ?? "", "RobloxPlayerBeta.exe");
 
-                                    if (File.Exists(pBeta))
+                                    if (SafeFileExists(pBeta))
                                     {
                                         foundGames["RobloxPlayerBeta.exe"] = new GamePriorityItem
                                         {
@@ -1644,7 +1664,7 @@ public static class NativeTuning
 
         // Filter strictly to games that are physically installed on the system
         var res = foundGames.Values
-            .Where(g => !string.IsNullOrEmpty(g.FullPath) && File.Exists(g.FullPath))
+            .Where(g => !string.IsNullOrEmpty(g.FullPath) && SafeFileExists(g.FullPath))
             .ToList();
 
         // If no games were auto-detected, fallback to any found entry
@@ -1657,7 +1677,7 @@ public static class NativeTuning
         foreach (var g in res)
         {
             g.IsHighPriority = CheckGameHighPriority(g.ExeName);
-            if (!string.IsNullOrEmpty(g.FullPath) && File.Exists(g.FullPath))
+            if (!string.IsNullOrEmpty(g.FullPath) && SafeFileExists(g.FullPath))
             {
                 g.Icon = GetIconForFile(g.FullPath);
             }
@@ -1839,6 +1859,63 @@ public static class NativeTuning
         catch { }
     }
 
+    public static string? QuickParseLnkTarget(string lnkPath)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(lnkPath) || !File.Exists(lnkPath)) return null;
+            using var fs = new FileStream(lnkPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (fs.Length < 0x4C) return null;
+
+            using var br = new BinaryReader(fs);
+            int headerSize = br.ReadInt32();
+            if (headerSize != 0x4C) return null;
+
+            byte[] clsid = br.ReadBytes(16);
+            if (clsid[0] != 0x01 || clsid[1] != 0x14 || clsid[2] != 0x02 || clsid[3] != 0x00)
+                return null;
+
+            int flags = br.ReadInt32();
+            fs.Seek(0x4C, SeekOrigin.Begin);
+
+            if ((flags & 0x01) != 0) // HasLinkTargetIDList
+            {
+                if (fs.Position + 2 > fs.Length) return null;
+                ushort idListSize = br.ReadUInt16();
+                fs.Seek(idListSize, SeekOrigin.Current);
+            }
+
+            if ((flags & 0x02) != 0) // HasLinkInfo
+            {
+                long linkInfoPos = fs.Position;
+                if (linkInfoPos + 0x1C > fs.Length) return null;
+
+                int linkInfoSize = br.ReadInt32();
+                int linkInfoHeaderSize = br.ReadInt32();
+                int linkInfoFlags = br.ReadInt32();
+                int volumeIdOffset = br.ReadInt32();
+                int localBasePathOffset = br.ReadInt32();
+
+                if (localBasePathOffset > 0 && linkInfoPos + localBasePathOffset < fs.Length)
+                {
+                    fs.Seek(linkInfoPos + localBasePathOffset, SeekOrigin.Begin);
+                    var sb = new StringBuilder();
+                    while (fs.Position < fs.Length)
+                    {
+                        byte b = br.ReadByte();
+                        if (b == 0) break;
+                        sb.Append((char)b);
+                    }
+                    string target = sb.ToString();
+                    if (!string.IsNullOrEmpty(target) && SafeFileExists(target))
+                        return target;
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
     [ComImport]
     [Guid("00021401-0000-0000-C000-000000000046")]
     private class ShellLinkClass { }
@@ -1848,24 +1925,42 @@ public static class NativeTuning
     [Guid("000214F9-0000-0000-C000-000000000046")]
     private interface IShellLinkW
     {
-        void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cchMaxPath, out IntPtr pfd, int fFlags);
-        void GetIDList(out IntPtr ppidl);
-        void SetIDList(IntPtr pidl);
-        void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cchMaxName);
-        void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
-        void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszDir, int cchMaxPath);
-        void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
-        void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszArgs, int cchMaxPath);
-        void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
-        void GetHotkey(out short pwHotkey);
-        void SetHotkey(short wHotkey);
-        void GetShowCmd(out int piShowCmd);
-        void SetShowCmd(int iShowCmd);
-        void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cchIconPath, out int piIcon);
-        void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
-        void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, int dwReserved);
-        void Resolve(IntPtr hwnd, int fFlags);
-        void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
+        [PreserveSig]
+        int GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszFile, int cchMaxPath, IntPtr pfd, int fFlags);
+        [PreserveSig]
+        int GetIDList(out IntPtr ppidl);
+        [PreserveSig]
+        int SetIDList(IntPtr pidl);
+        [PreserveSig]
+        int GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszName, int cchMaxName);
+        [PreserveSig]
+        int SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+        [PreserveSig]
+        int GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszDir, int cchMaxPath);
+        [PreserveSig]
+        int SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
+        [PreserveSig]
+        int GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszArgs, int cchMaxPath);
+        [PreserveSig]
+        int SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
+        [PreserveSig]
+        int GetHotkey(out short pwHotkey);
+        [PreserveSig]
+        int SetHotkey(short wHotkey);
+        [PreserveSig]
+        int GetShowCmd(out int piShowCmd);
+        [PreserveSig]
+        int SetShowCmd(int iShowCmd);
+        [PreserveSig]
+        int GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder pszIconPath, int cchIconPath, out int piIcon);
+        [PreserveSig]
+        int SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
+        [PreserveSig]
+        int SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, int dwReserved);
+        [PreserveSig]
+        int Resolve(IntPtr hwnd, int fFlags);
+        [PreserveSig]
+        int SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
     }
 
     [ComImport]
@@ -1873,27 +1968,98 @@ public static class NativeTuning
     [Guid("0000010b-0000-0000-C000-000000000046")]
     private interface IPersistFile
     {
-        void GetClassID(out Guid pClassID);
-        void IsDirty();
-        void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, int dwMode);
-        void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, [MarshalAs(UnmanagedType.Bool)] bool fRemember);
-        void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
-        void GetCurFile([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder ppszFileName);
+        [PreserveSig]
+        int GetClassID(out Guid pClassID);
+        [PreserveSig]
+        int IsDirty();
+        [PreserveSig]
+        int Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, int dwMode);
+        [PreserveSig]
+        int Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, [MarshalAs(UnmanagedType.Bool)] bool fRemember);
+        [PreserveSig]
+        int SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
+        [PreserveSig]
+        int GetCurFile([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder ppszFileName);
     }
 
     public static string? ResolveShortcutTarget(string shortcutPath)
     {
+        if (string.IsNullOrWhiteSpace(shortcutPath)) return null;
+
+        var quickTarget = QuickParseLnkTarget(shortcutPath);
+        if (!string.IsNullOrEmpty(quickTarget)) return quickTarget;
+
+        IShellLinkW? link = null;
         try
         {
-            var link = (IShellLinkW)new ShellLinkClass();
-            ((IPersistFile)link).Load(shortcutPath, 0);
-            var sb = new StringBuilder(1024);
-            link.GetPath(sb, sb.Capacity, out _, 0);
-            string target = sb.ToString();
-            if (!string.IsNullOrEmpty(target) && File.Exists(target)) return target;
+            link = (IShellLinkW)new ShellLinkClass();
+            if (link is IPersistFile persistFile)
+            {
+                int hr = persistFile.Load(shortcutPath, 0);
+                if (hr == 0)
+                {
+                    var sb = new StringBuilder(1024);
+                    // Crucial: pass IntPtr.Zero so Windows does NOT write 592-byte WIN32_FIND_DATAW over stack!
+                    link.GetPath(sb, sb.Capacity, IntPtr.Zero, 0x0004 /* SLGP_RAWPATH */);
+                    string target = sb.ToString();
+                    if (!string.IsNullOrEmpty(target) && SafeFileExists(target)) return target;
+                }
+            }
         }
         catch { }
+        finally
+        {
+            if (link != null)
+            {
+                try { Marshal.ReleaseComObject(link); } catch { }
+            }
+        }
         return null;
+    }
+
+    private static IEnumerable<string> EnumerateShortcutsSafely(string rootDir, int maxDepth = 3)
+    {
+        if (string.IsNullOrWhiteSpace(rootDir) || !Directory.Exists(rootDir)) yield break;
+
+        var queue = new Queue<(string path, int depth)>();
+        queue.Enqueue((rootDir, 0));
+
+        while (queue.Count > 0)
+        {
+            var (current, depth) = queue.Dequeue();
+            string[] files = Array.Empty<string>();
+            try
+            {
+                files = Directory.GetFiles(current, "*.lnk");
+            }
+            catch { }
+
+            foreach (var f in files)
+            {
+                yield return f;
+            }
+
+            if (depth < maxDepth)
+            {
+                string[] subDirs = Array.Empty<string>();
+                try
+                {
+                    subDirs = Directory.GetDirectories(current);
+                }
+                catch { }
+
+                foreach (var d in subDirs)
+                {
+                    try
+                    {
+                        var di = new DirectoryInfo(d);
+                        if ((di.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                        queue.Enqueue((d, depth + 1));
+                    }
+                    catch { }
+                }
+            }
+        }
     }
 
     public static bool CheckGameHighPriority(string exeName)
@@ -5237,8 +5403,8 @@ foreach ($sc in $shortcuts) {
     {
         var info = new NexWinSelfUpdateInfo
         {
-            CurrentVersion = "1.0.88",
-            LatestVersion = "1.0.88",
+            CurrentVersion = "1.0.89",
+            LatestVersion = "1.0.89",
             IsUpdateAvailable = false
         };
 
@@ -5256,7 +5422,7 @@ foreach ($sc in $shortcuts) {
             catch { }
 
             using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.88");
+            client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.89");
             client.DefaultRequestHeaders.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue
             {
                 NoCache = true,
@@ -5340,7 +5506,7 @@ foreach ($sc in $shortcuts) {
 
             using (var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(10) })
             {
-                client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.88");
+                client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.89");
                 using var response = await client.GetAsync(downloadUrl, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();
 
@@ -5404,7 +5570,7 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
                 string cmdPath = Path.Combine(tempRoot, "apply_nexwin_update.cmd");
                 string cmdContent = $@"@echo off
 setlocal
-rem NexWin v1.0.88 Bulletproof In-Place Self Updater
+rem NexWin v1.0.89 Bulletproof In-Place Self Updater
 timeout /t 1 /nobreak >nul
 taskkill /F /PID {currentPid} >nul 2>&1
 timeout /t 1 /nobreak >nul
@@ -5744,9 +5910,9 @@ timeout /t 3 /nobreak >nul
         try
         {
             using var apiClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2.5) };
-            apiClient.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.88");
+            apiClient.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.89");
             apiClient.DefaultRequestHeaders.Add("X-Install-Id", GetOrCreateAnonymousInstallId());
-            apiClient.DefaultRequestHeaders.Add("X-App-Version", "1.0.88");
+            apiClient.DefaultRequestHeaders.Add("X-App-Version", "1.0.89");
             apiClient.DefaultRequestHeaders.Add("X-App-Lang", NexLocale.CurrentLanguage == AppLanguage.En ? "en" : "ro");
 
             var apiResp = await apiClient.GetAsync($"{goal.ApiEndpoint.TrimEnd('/')}/goal?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
@@ -5766,7 +5932,7 @@ timeout /t 3 /nobreak >nul
         try
         {
             using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(4) };
-            client.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.88");
+            client.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.89");
             client.DefaultRequestHeaders.Add("X-Install-Id", GetOrCreateAnonymousInstallId());
 
             string[] fallbackUrls =

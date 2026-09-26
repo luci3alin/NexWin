@@ -843,7 +843,7 @@ public partial class MainWindow : Window
 
     private void ShowGamePrioritySection()
     {
-        var defaultGames = NativeTuning.GetDefaultGamesList();
+        var defaultGames = NativeTuning.GetDefaultGamesList() ?? new List<NativeTuning.GamePriorityItem>();
         if (!defaultGames.Any(g => g.ExeName.Equals("steam.exe", StringComparison.OrdinalIgnoreCase)))
         {
             defaultGames.Insert(0, new NativeTuning.GamePriorityItem
@@ -858,7 +858,9 @@ public partial class MainWindow : Window
         {
             selectedGameExe = "steam.exe";
         }
-        var selectedGame = defaultGames.FirstOrDefault(g => g.ExeName.Equals(selectedGameExe, StringComparison.OrdinalIgnoreCase)) ?? defaultGames.First();
+        var selectedGame = defaultGames.FirstOrDefault(g => g.ExeName.Equals(selectedGameExe, StringComparison.OrdinalIgnoreCase))
+                           ?? defaultGames.FirstOrDefault()
+                           ?? new NativeTuning.GamePriorityItem { ExeName = "steam.exe", DisplayName = "Steam Lite" };
 
         var container = new Border
         {

@@ -2,9 +2,16 @@ namespace NexWin.Native;
 
 internal static class Bootstrap
 {
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern uint SetErrorMode(uint uMode);
+
     [STAThread]
     private static void Main(string[] args)
     {
+        // Suppress Windows hard-error dialogs (e.g. 0xc0000005, disk not ready, open file errors)
+        // SEM_FAILCRITICALERRORS (0x0001) | SEM_NOGPFAULTERRORBOX (0x0002) | SEM_NOOPENFILEERRORBOX (0x8000)
+        try { SetErrorMode(0x0001 | 0x0002 | 0x8000); } catch { }
+
         bool isScreenshot = args.Any(a => a.Equals("--screenshot", StringComparison.OrdinalIgnoreCase) || a.Equals("--screenshot-page", StringComparison.OrdinalIgnoreCase));
         bool isTray = args.Any(a => a.Equals("--tray", StringComparison.OrdinalIgnoreCase));
         if (!isScreenshot && !isTray && !IsAdministrator() && !args.Any(a => a.Equals("--no-elevate", StringComparison.OrdinalIgnoreCase)))
@@ -46,6 +53,15 @@ internal static class Bootstrap
         }
 
         var application = new System.Windows.Application();
+        application.DispatcherUnhandledException += (s, e) =>
+        {
+            try { System.IO.File.AppendAllText("crash_log.txt", $"[{DateTime.Now}] Dispatcher Unhandled: {e.Exception}\n"); } catch { }
+            e.Handled = true;
+        };
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+        {
+            try { System.IO.File.AppendAllText("crash_log.txt", $"[{DateTime.Now}] Domain Unhandled: {e.ExceptionObject}\n"); } catch { }
+        };
 
         string? langArg = null;
         for (int i = 0; i < args.Length - 1; i++)

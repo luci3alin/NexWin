@@ -9,9 +9,9 @@
     <RootNamespace>NexWin.Native</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>assets\logo.ico</ApplicationIcon>
-    <Version>1.0.88</Version>
-    <FileVersion>1.0.88.0</FileVersion>
-    <AssemblyVersion>1.0.88.0</AssemblyVersion>
+    <Version>1.0.89</Version>
+    <FileVersion>1.0.89.0</FileVersion>
+    <AssemblyVersion>1.0.89.0</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="MainFormV2.cs" />

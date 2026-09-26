@@ -1236,9 +1236,9 @@ public sealed partial class MainWindow : Window
                 _nexwinSelfUpdateInfo = new NativeTuning.NexWinSelfUpdateInfo
                 {
                     IsUpdateAvailable = true,
-                    CurrentVersion = "1.0.87",
-                    LatestVersion = "1.0.88",
-                    DownloadUrl = "https://github.com/luci3alin/NexWin/releases/latest/download/NexWin-Update.zip",
+                    CurrentVersion = "1.0.88",
+                    LatestVersion = NativeTuning.CurrentVersion,
+                    DownloadUrl = "https://github.com/luci3alin/NexWin/releases/latest/download/NexWin-Setup-v1.0.89-native.exe",
                     ReleaseNotes = "Actualizare automată în-place cu un singur click, fără reinstalare manuală."
                 };
                 UpdateTopNotificationsBadge(cachedUpgradesList.Count + 1);

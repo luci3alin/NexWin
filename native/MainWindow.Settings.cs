@@ -345,7 +345,7 @@ public partial class MainWindow : Window
         });
         vStack.Children.Add(new TextBlock
         {
-            Text = "v1.0.88",
+            Text = $"v{NativeTuning.CurrentVersion}",
             FontSize = 13,
             FontWeight = FontWeights.SemiBold,
             Foreground = TextBrush,
@@ -382,7 +382,7 @@ public partial class MainWindow : Window
             {
                 ShowToast(
                     NexLocale.T("notif_remote_toast_title", "Actualizare NexWin"),
-                    NexLocale.Format("notif_remote_toast_msg", "1.0.88"),
+                    NexLocale.Format("notif_remote_toast_msg", NativeTuning.CurrentVersion),
                     NexIcon.Check,
                     GreenBrush);
             }
