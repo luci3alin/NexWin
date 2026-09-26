@@ -10,6 +10,7 @@ native_stage/
 release_stage/
 scratch/
 qa-*.png
+qa-exact-render.png
 badge*_crop.png
 card*_crop.png
 card*_full_ill.png
@@ -21,3 +22,6 @@ speedtest-win64.zip
 *.log
 *.user
 *.suo
+
+# Local Netlify folder
+.netlify

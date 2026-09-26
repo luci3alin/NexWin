@@ -164,6 +164,14 @@ internal static class Bootstrap
                 mainWindow.NavigateTo(p);
             }
         }
+        application.Exit += (_, _) =>
+        {
+            try { NativeTuning.RestoreOriginalWallpaper(disableAuto: false); } catch { }
+        };
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try { NativeTuning.RestoreOriginalWallpaper(disableAuto: false); } catch { }
+        };
         application.Run(mainWindow);
     }
 

@@ -1,5 +1,5 @@
 #define MyAppName "NexWin"
-#define MyAppVersion "1.0.85"
+#define MyAppVersion "1.0.86"
 #define MyAppPublisher "luci3alin"
 #define MyAppURL "https://github.com/luci3alin/NexWin"
 #define MyAppExeName "NexWin.exe"
@@ -19,6 +19,9 @@ AllowNoIcons=yes
 OutputDir=..\dist-installer
 OutputBaseFilename=NexWin-Setup-v{#MyAppVersion}-native
 SetupIconFile=..\native\assets\logo.ico
+WizardImageFile=assets\wizard-banner.bmp
+WizardSmallImageFile=assets\wizard-small.bmp
+WizardImageStretch=yes
 UninstallDisplayIcon={app}\logo.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -36,23 +39,37 @@ UsePreviousLanguage=no
 Name: "romanian"; MessagesFile: "compiler:Default.isl,Romanian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Messages]
+romanian.SelectTasksDesc=Opțiuni suplimentare
+romanian.SelectTasksLabel2=Alege opțiunile dorite pentru instalare:
+romanian.FinishedHeadingLabel=Instalare completă {#MyAppName}
+romanian.FinishedLabelNoIcons={#MyAppName} a fost instalat cu succes pe calculatorul tău.
+romanian.FinishedLabel={#MyAppName} a fost instalat cu succes pe calculatorul tău.
+romanian.ClickFinish=Apasă pe Finalizare pentru a închide instalatorul.
+english.SelectTasksDesc=Additional options
+english.SelectTasksLabel2=Choose the options you want to apply:
+english.FinishedHeadingLabel={#MyAppName} Installation Complete
+english.FinishedLabelNoIcons={#MyAppName} has been successfully installed on your computer.
+english.FinishedLabel={#MyAppName} has been successfully installed on your computer.
+english.ClickFinish=Click Finish to close the installer.
+
 [CustomMessages]
-romanian.GroupIcons=Scurtături și Pictograme:
-english.GroupIcons=Shortcuts and Icons:
-romanian.TaskDesktopIcon=Creează scurtătură pe Desktop (cu noua pictogramă NexWin)
-english.TaskDesktopIcon=Create a Desktop shortcut (with the new NexWin icon)
-romanian.GroupStartup=Integrare Sistem & Pornire Automată:
-english.GroupStartup=System Integration & Auto-Start:
-romanian.TaskAutoStartTray=Pornește automat NexWin în System Tray la aprinderea PC-ului (Fără fereastră UAC)
-english.TaskAutoStartTray=Start NexWin automatically in System Tray at Windows login (Zero-UAC prompt)
-romanian.GroupSafety=Siguranță & Mentenanță Inițială:
-english.GroupSafety=Safety & Initial Maintenance:
-romanian.TaskRestorePoint=Activează protecția System Restore pentru backup rapid înainte de optimizări
-english.TaskRestorePoint=Enable System Restore protection for quick backup before optimizations
-romanian.TaskCleanCache=Curăță cache-ul versiunilor anterioare și sincronizează limba selectată (RO)
-english.TaskCleanCache=Clean legacy cache and synchronize selected installer language (EN)
-romanian.LaunchApp=Pornește {#MyAppName} acum (în limba Română)
-english.LaunchApp=Launch {#MyAppName} now (in English)
+romanian.GroupIcons=Scurtături:
+english.GroupIcons=Shortcuts:
+romanian.TaskDesktopIcon=Creează scurtătură pe Desktop
+english.TaskDesktopIcon=Create a Desktop shortcut
+romanian.GroupStartup=Pornire automată:
+english.GroupStartup=Startup:
+romanian.TaskAutoStartTray=Pornește automat odată cu Windows
+english.TaskAutoStartTray=Start automatically with Windows
+romanian.GroupSafety=Siguranță și mentenanță:
+english.GroupSafety=Safety and maintenance:
+romanian.TaskRestorePoint=Activează System Restore pentru backup
+english.TaskRestorePoint=Enable System Restore for backup
+romanian.TaskCleanCache=Curăță fișierele temporare vechi
+english.TaskCleanCache=Clean old temporary files
+romanian.LaunchApp=Pornește {#MyAppName}
+english.LaunchApp=Launch {#MyAppName}
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:TaskDesktopIcon}"; GroupDescription: "{cm:GroupIcons}"
@@ -63,14 +80,16 @@ Name: "cleancache"; Description: "{cm:TaskCleanCache}"; GroupDescription: "{cm:G
 [Files]
 Source: "..\native_stage\NexWin-v5\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\native\assets\logo.ico"; DestDir: "{app}"; DestName: "logo.ico"; Flags: ignoreversion
+Source: "..\native\assets\nexwin_ribbon.ico"; DestDir: "{app}"; DestName: "nexwin_ribbon.ico"; Flags: ignoreversion
 Source: "..\native\assets\logo.ico"; DestDir: "{app}\assets"; DestName: "logo.ico"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\logo.ico"
-Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; IconFilename: "{app}\logo.ico"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\logo.ico"; Tasks: desktopicon
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\nexwin_ribbon.ico"
+Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; IconFilename: "{app}\nexwin_ribbon.ico"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\nexwin_ribbon.ico"; Tasks: desktopicon
 
 [Run]
+Filename: "ie4uinit.exe"; Parameters: "-show"; Flags: runhidden waituntilterminated
 Filename: "schtasks.exe"; Parameters: "/Create /TN ""NexWinAutoStart"" /TR ""\""{app}\{#MyAppExeName}\"" --tray"" /SC ONLOGON /RL HIGHEST /F"; Flags: runhidden waituntilterminated; Tasks: autostarttray
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
 

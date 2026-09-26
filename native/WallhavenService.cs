@@ -83,11 +83,98 @@ public static class WallhavenService
         return dir;
     }
 
+    public static string NormalizeAndTranslateQuery(string rawQuery)
+    {
+        if (string.IsNullOrWhiteSpace(rawQuery)) return string.Empty;
+
+        string q = rawQuery.Trim().ToLowerInvariant();
+        q = q.Replace('ă', 'a').Replace('â', 'a')
+             .Replace('î', 'i')
+             .Replace('ș', 's').Replace('ş', 's')
+             .Replace('ț', 't').Replace('ţ', 't');
+
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "masini", "cars" },
+            { "masina", "cars" },
+            { "auto", "cars" },
+            { "vehicule", "vehicles" },
+            { "motociclete", "motorcycles" },
+            { "jocuri", "gaming" },
+            { "joc", "gaming" },
+            { "gamer", "gaming" },
+            { "gaming wallpaper", "gaming" },
+            { "natura", "nature" },
+            { "peisaj", "landscape" },
+            { "peisaje", "landscape" },
+            { "munte", "mountains" },
+            { "munti", "mountains" },
+            { "padure", "forest" },
+            { "paduri", "forest" },
+            { "copaci", "trees" },
+            { "spatiu", "space" },
+            { "stele", "stars" },
+            { "galaxie", "galaxy" },
+            { "planete", "planets" },
+            { "luna", "moon" },
+            { "fete", "anime girl" },
+            { "femei", "women" },
+            { "femeie", "women" },
+            { "fata", "girl" },
+            { "oameni", "people" },
+            { "oras", "city" },
+            { "orase", "city skyline" },
+            { "cladiri", "architecture" },
+            { "noapte", "night" },
+            { "intuneric", "dark" },
+            { "intunecat", "dark" },
+            { "negru", "black dark" },
+            { "animale", "animals" },
+            { "caine", "dog" },
+            { "caini", "dogs" },
+            { "pisica", "cat" },
+            { "pisici", "cats" },
+            { "lup", "wolf" },
+            { "lupi", "wolves" },
+            { "leu", "lion" },
+            { "tigru", "tiger" },
+            { "ocean", "ocean" },
+            { "mare", "sea" },
+            { "plaja", "beach" },
+            { "apa", "water" },
+            { "valuri", "waves" },
+            { "apus", "sunset" },
+            { "rasarit", "sunrise" },
+            { "iarna", "winter" },
+            { "zapada", "snow" },
+            { "toamna", "autumn" },
+            { "vara", "summer" },
+            { "primavara", "spring" },
+            { "flori", "flowers" },
+            { "floare", "flower" },
+            { "fantezie", "fantasy" },
+            { "abstract", "abstract" },
+            { "tehnologie", "cyberpunk technology" },
+            { "calculator", "technology computer" },
+            { "cyberpunk", "cyberpunk" },
+            { "minimalist", "minimalism" }
+        };
+
+        if (map.TryGetValue(q, out var directMatch))
+        {
+            return directMatch;
+        }
+
+        var words = q.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var translated = words.Select(w => map.TryGetValue(w, out var tr) ? tr : w);
+        return string.Join(" ", translated);
+    }
+
     public static async Task<List<WallpaperPhotoItem>> SearchWallpapersAsync(
         string query = "",
         string categories = "111", // general, anime, people
         string purity = "100",     // 100=sfw, 110=sfw+sketchy, 111=sfw+sketchy+nsfw
-        string sorting = "toplist", // toplist, hot, date_added, views, favorites, random
+        string sorting = "toplist", // toplist, hot, date_added, views, favorites, random, relevance
         string topRange = "1M",    // 1d, 3d, 1w, 1M, 3M, 6M, 1y
         string atleast = "1920x1080",
         string ratios = "",        // 16x9, 21x9, 16x10
@@ -97,39 +184,81 @@ public static class WallhavenService
         string thumbDir = GetThumbCacheDirectory();
         string wallpapersDir = GetWallpapersDirectory();
 
+        string effectiveQuery = NormalizeAndTranslateQuery(query);
+        string effectiveSorting = sorting;
+
+        // When a search query is provided and sorting is default toplist, switch to relevance
+        // so Wallhaven searches across all historical wallpapers rather than being restricted to the last 30 days.
+        if (!string.IsNullOrWhiteSpace(effectiveQuery) && sorting.Equals("toplist", StringComparison.OrdinalIgnoreCase))
+        {
+            effectiveSorting = "relevance";
+        }
+
+        async Task<string?> FetchWallhavenJsonAsync(string q, string sort, string atLeastRes, string rat, bool withApiKey)
+        {
+            try
+            {
+                var queryParams = new List<string>();
+                if (withApiKey) queryParams.Add($"apikey={API_KEY}");
+                queryParams.Add($"categories={Uri.EscapeDataString(categories)}");
+                queryParams.Add($"purity={Uri.EscapeDataString(purity)}");
+                queryParams.Add($"sorting={Uri.EscapeDataString(sort)}");
+                queryParams.Add($"page={page}");
+
+                if (!string.IsNullOrWhiteSpace(q))
+                {
+                    queryParams.Add($"q={Uri.EscapeDataString(q.Trim())}");
+                }
+
+                if (sort.Equals("toplist", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(topRange))
+                {
+                    queryParams.Add($"topRange={Uri.EscapeDataString(topRange)}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(atLeastRes) && !atLeastRes.Equals("any", StringComparison.OrdinalIgnoreCase))
+                {
+                    queryParams.Add($"atleast={Uri.EscapeDataString(atLeastRes)}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(rat))
+                {
+                    queryParams.Add($"ratios={Uri.EscapeDataString(rat)}");
+                }
+
+                string requestUrl = $"{BASE_URL}?{string.Join("&", queryParams)}";
+                return await _httpClient.GetStringAsync(requestUrl);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         try
         {
-            var queryParams = new List<string>
-            {
-                $"apikey={API_KEY}",
-                $"categories={Uri.EscapeDataString(categories)}",
-                $"purity={Uri.EscapeDataString(purity)}",
-                $"sorting={Uri.EscapeDataString(sorting)}",
-                $"page={page}"
-            };
+            string? response = await FetchWallhavenJsonAsync(effectiveQuery, effectiveSorting, atleast, ratios, true);
 
-            if (!string.IsNullOrWhiteSpace(query))
+            // If API key was rate-limited or failed, retry without API key (Wallhaven SFW is public)
+            if (response == null)
             {
-                queryParams.Add($"q={Uri.EscapeDataString(query.Trim())}");
+                response = await FetchWallhavenJsonAsync(effectiveQuery, effectiveSorting, atleast, ratios, false);
             }
 
-            if (sorting.Equals("toplist", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(topRange))
+            // If still empty or 0 items and resolution/ratio was specified, retry with relaxed filters
+            if (response != null)
             {
-                queryParams.Add($"topRange={Uri.EscapeDataString(topRange)}");
+                using var testDoc = JsonDocument.Parse(response);
+                if (!testDoc.RootElement.TryGetProperty("data", out var testData) || testData.GetArrayLength() == 0)
+                {
+                    if (!string.IsNullOrEmpty(atleast) || !string.IsNullOrEmpty(ratios))
+                    {
+                        var relaxedResp = await FetchWallhavenJsonAsync(effectiveQuery, effectiveSorting, "", "", true);
+                        if (relaxedResp != null) response = relaxedResp;
+                    }
+                }
             }
 
-            if (!string.IsNullOrWhiteSpace(atleast) && !atleast.Equals("any", StringComparison.OrdinalIgnoreCase))
-            {
-                queryParams.Add($"atleast={Uri.EscapeDataString(atleast)}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(ratios))
-            {
-                queryParams.Add($"ratios={Uri.EscapeDataString(ratios)}");
-            }
-
-            string requestUrl = $"{BASE_URL}?{string.Join("&", queryParams)}";
-            var response = await _httpClient.GetStringAsync(requestUrl);
+            if (string.IsNullOrEmpty(response)) return results;
 
             using var doc = JsonDocument.Parse(response);
             var root = doc.RootElement;

@@ -1281,13 +1281,13 @@ public partial class MainWindow : Window
                     (NexLocale.T("cust_cat_general", "General"), "", "100"),
                     (NexLocale.T("cust_cat_anime", "Anime"), "", "010"),
                     (NexLocale.T("cust_cat_people", "Oameni"), "", "001"),
-                    (NexLocale.T("cust_cat_cyberpunk", "Cyberpunk"), "cyberpunk neon", "111"),
-                    (NexLocale.T("cust_cat_space", "Spațiu"), "space nebula galaxy", "111"),
-                    (NexLocale.T("cust_cat_nature", "Natură"), "nature landscape mountains", "111"),
-                    (NexLocale.T("cust_cat_minimalist", "Minimalist"), "minimalism clean dark", "111"),
-                    (NexLocale.T("cust_cat_gaming", "Gaming"), "gaming wallpaper", "111"),
-                    (NexLocale.T("cust_cat_cars", "Mașini"), "supercar synthwave", "111"),
-                    (NexLocale.T("cust_cat_fantasy", "Fantasy"), "fantasy landscape digital art", "111")
+                    (NexLocale.T("cust_cat_cyberpunk", "Cyberpunk"), "cyberpunk", "111"),
+                    (NexLocale.T("cust_cat_space", "Spațiu"), "space", "111"),
+                    (NexLocale.T("cust_cat_nature", "Natură"), "nature", "111"),
+                    (NexLocale.T("cust_cat_minimalist", "Minimalist"), "minimalism", "111"),
+                    (NexLocale.T("cust_cat_gaming", "Gaming"), "gaming", "111"),
+                    (NexLocale.T("cust_cat_cars", "Mașini"), "cars", "111"),
+                    (NexLocale.T("cust_cat_fantasy", "Fantasy"), "fantasy", "111")
                 };
 
                 foreach (var (pLabel, pQuery, pCat) in staticPresets)
@@ -2469,6 +2469,7 @@ public partial class MainWindow : Window
         bool isAutoEnabled = NativeTuning.GetAutoWallpaperEnabled();
         int intervalMins = NativeTuning.GetAutoWallpaperIntervalMinutes();
         bool isRandom = NativeTuning.GetAutoWallpaperRandom();
+        string mediaType = NativeTuning.GetAutoWallpaperMediaType();
 
         var card = new Border
         {
@@ -2581,10 +2582,58 @@ public partial class MainWindow : Window
         topGrid.Children.Add(toggleCb);
         mainStack.Children.Add(topGrid);
 
-        // Controls Row: Interval Pills + Order Selector + "Schimbă acum" button
+        // Controls Row: Media Selector + Interval Pills + Order Selector + "Schimbă acum" button
         if (isAutoEnabled)
         {
-            var controlsRow = new Grid { Margin = new Thickness(0, 6, 0, 0) };
+            var mediaRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 8), VerticalAlignment = VerticalAlignment.Center };
+            mediaRow.Children.Add(new TextBlock
+            {
+                Text = NexLocale.T("cust_auto_wp_media_type"),
+                FontSize = 11,
+                Foreground = MutedBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 0)
+            });
+
+            var mediaOptions = new (string TypeKey, string Label)[]
+            {
+                ("all", NexLocale.T("cust_auto_wp_media_all")),
+                ("video", NexLocale.T("cust_auto_wp_media_video")),
+                ("static", NexLocale.T("cust_auto_wp_media_static"))
+            };
+
+            foreach (var (mType, mLbl) in mediaOptions)
+            {
+                bool isSel = mediaType == mType;
+                var pill = new Border
+                {
+                    Background = isSel ? new SolidColorBrush(Color.FromRgb(15, 38, 74)) : new SolidColorBrush(Color.FromRgb(13, 20, 32)),
+                    BorderBrush = isSel ? new SolidColorBrush(Color.FromRgb(37, 99, 235)) : new SolidColorBrush(Color.FromRgb(24, 38, 56)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(9, 4, 9, 4),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    Cursor = Cursors.Hand,
+                    Child = new TextBlock
+                    {
+                        Text = mLbl,
+                        FontSize = 10.5,
+                        FontWeight = isSel ? FontWeights.Bold : FontWeights.Normal,
+                        Foreground = isSel ? CyanBrush : TextBrush
+                    }
+                };
+                string capturedType = mType;
+                pill.MouseLeftButtonUp += (_, _) =>
+                {
+                    NativeTuning.SetAutoWallpaperMediaType(capturedType);
+                    InitAutoWallpaperTimer();
+                    ShowCustomizer();
+                };
+                mediaRow.Children.Add(pill);
+            }
+            mainStack.Children.Add(mediaRow);
+
+            var controlsRow = new Grid { Margin = new Thickness(0, 2, 0, 0) };
             controlsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             controlsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 

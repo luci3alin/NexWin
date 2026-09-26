@@ -1000,6 +1000,23 @@ public partial class MainWindow : Window
             });
 
             // 1. NexWin Official In-Place Self-Updater Card
+            if (_nexwinSelfUpdateInfo == null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    var checkedInfo = await NativeTuning.CheckNexWinSelfUpdateAsync().ConfigureAwait(false);
+                    _nexwinSelfUpdateInfo = checkedInfo;
+                    if (checkedInfo.IsUpdateAvailable)
+                    {
+                        _ = Dispatcher.InvokeAsync(() =>
+                        {
+                            UpdateTopNotificationsBadge((cachedUpgradesList?.Count ?? 0) + 1);
+                            if (ModalOverlay.Visibility == Visibility.Visible)
+                                ShowNotificationsModal();
+                        });
+                    }
+                });
+            }
             bool hasNexWinUpdate = _nexwinSelfUpdateInfo?.IsUpdateAvailable == true;
             string latestNexWinVer = _nexwinSelfUpdateInfo?.LatestVersion ?? "1.0.85";
 
@@ -1086,7 +1103,9 @@ public partial class MainWindow : Window
                 VerticalAlignment = VerticalAlignment.Center,
                 Child = new TextBlock
                 {
-                    Text = hasNexWinUpdate ? $"v1.0.15 -> v{latestNexWinVer}" : "v1.0.15",
+                    Text = hasNexWinUpdate
+                        ? $"v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.85"} -> v{latestNexWinVer}"
+                        : $"v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.85"}",
                     FontSize = 9.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = GreenBrush
@@ -1099,7 +1118,7 @@ public partial class MainWindow : Window
             {
                 Text = hasNexWinUpdate
                     ? $"Versiune nouă disponibilă: NexWin v{latestNexWinVer}"
-                    : NexLocale.T("notif_remote_uptodate", "NexWin v1.0.15 este la zi"),
+                    : $"NexWin v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.85"} este la zi",
                 FontSize = 11,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = hasNexWinUpdate ? CyanBrush : GreenBrush,
@@ -1190,7 +1209,7 @@ public partial class MainWindow : Window
                 {
                     ShowToast(
                         NexLocale.T("notif_remote_toast_title", "Actualizare NexWin"),
-                        NexLocale.T("notif_remote_toast_msg", "Rulezi deja cea mai recentă versiune NexWin v1.0.15."),
+                        $"Rulezi deja cea mai recentă versiune NexWin v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.85"}.",
                         NexIcon.Check,
                         GreenBrush);
                 }
@@ -1842,24 +1861,13 @@ public partial class MainWindow : Window
 
     private void NavigateToSearchResult(GlobalSearchResult item)
     {
-        switch (item.TargetPage)
+        if (!string.IsNullOrEmpty(item.TargetPage))
         {
-            case "Gaming":
-                NavigateTo("Gaming");
-                break;
-            case "Customizer":
-                NavigateTo("CustomizerWallpaper");
-                break;
-            case "Debloat":
-                NavigateTo("Apps");
-                break;
-            case "Hardware":
-                NavigateTo("Performance");
-                break;
-            case "Tuning":
-            default:
-                NavigateTo("Performance");
-                break;
+            NavigateTo(item.TargetPage);
+        }
+        else
+        {
+            NavigateTo("Performance");
         }
 
         ShowToast(item.Title, NexLocale.Format("modal_search_toast_section_format", item.Category), NexIcon.Check, CyanBrush);

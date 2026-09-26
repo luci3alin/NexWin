@@ -427,24 +427,32 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            var photos = WallhavenService.GetLocalWallpapers();
-            var videos = PixabayVideoService.GetLocalWallpapers();
-
+            string mediaType = NativeTuning.GetAutoWallpaperMediaType();
             var allItems = new List<(string Path, bool IsLive)>();
-            if (photos != null)
+
+            if (mediaType == "all" || mediaType == "static")
             {
-                foreach (var p in photos)
+                var photos = WallhavenService.GetLocalWallpapers();
+                if (photos != null)
                 {
-                    if (!string.IsNullOrEmpty(p.FilePath) && File.Exists(p.FilePath))
-                        allItems.Add((p.FilePath, false));
+                    foreach (var p in photos)
+                    {
+                        if (!string.IsNullOrEmpty(p.FilePath) && File.Exists(p.FilePath))
+                            allItems.Add((p.FilePath, false));
+                    }
                 }
             }
-            if (videos != null)
+
+            if (mediaType == "all" || mediaType == "video")
             {
-                foreach (var v in videos)
+                var videos = PixabayVideoService.GetLocalWallpapers();
+                if (videos != null)
                 {
-                    if (!string.IsNullOrEmpty(v.FilePath) && File.Exists(v.FilePath))
-                        allItems.Add((v.FilePath, true));
+                    foreach (var v in videos)
+                    {
+                        if (!string.IsNullOrEmpty(v.FilePath) && File.Exists(v.FilePath))
+                            allItems.Add((v.FilePath, true));
+                    }
                 }
             }
 
@@ -491,6 +499,7 @@ public sealed partial class MainWindow : Window
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        NativeTuning.EnsureOriginalWallpaperSaved();
         NexLocale.LanguageChanged += () => Dispatcher.Invoke(() =>
         {
             ApplyLanguageToChrome();
@@ -593,6 +602,11 @@ public sealed partial class MainWindow : Window
     {
         _isExplicitExit = true;
         RemoveSystemTrayIcon();
+        try
+        {
+            NativeTuning.RestoreOriginalWallpaper(disableAuto: false);
+        }
+        catch { }
         Application.Current.Shutdown();
     }
 
@@ -1160,7 +1174,7 @@ public sealed partial class MainWindow : Window
             case "Nvidia": case "NvidiaInspector": _activeGamingView = "NvidiaInspector"; SelectNav(NavGaming); ShowGaming(); break;
             case "NvidiaBottom": _activeGamingView = "NvidiaInspector"; SelectNav(NavGaming); ShowGaming(); PageScroll.ScrollToBottom(); break;
             case "GamingBottom": SelectNav(NavGaming); ShowGaming(); PageScroll.ScrollToBottom(); break;
-            case "AI": SelectNav(NavServices); ShowAi(); break;
+            case "AI": case "Debloat": SelectNav(NavServices); ShowAi(); break;
             case "Services": SelectNav(NavServices); ShowServices(); break;
             case "Profiles": SelectNav(NavProfiles); ShowProfiles(); break;
             case "Performance": SelectNav(NavPerformance); ShowPerformance(); break;

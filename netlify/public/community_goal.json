@@ -11,7 +11,7 @@
   "currentAmount": 0.0,
   "targetAmount": 100.0,
   "currency": "EUR",
-  "apiEndpoint": "https://nexwin.netlify.app/.netlify/functions/api",
+  "apiEndpoint": "https://nexwin-164.netlify.app/.netlify/functions/api",
   "donateUrl": "https://ko-fi.com/luci3alin",
   "revolutUrl": "https://revolut.me/luci3alin",
   "paypalUrl": "https://paypal.me/luci3alin",

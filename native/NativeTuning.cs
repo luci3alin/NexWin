@@ -2910,11 +2910,14 @@ public static class NativeTuning
         catch { return false; }
     }
 
-    public static bool RestoreOriginalWallpaper()
+    public static bool RestoreOriginalWallpaper(bool disableAuto = true)
     {
         try
         {
-            SetAutoWallpaperEnabled(false);
+            if (disableAuto)
+            {
+                SetAutoWallpaperEnabled(false);
+            }
             LiveWallpaperWindow.StopLive();
             LiveWallpaperWindow.RepairDesktopState(IntPtr.Zero);
 
@@ -2925,7 +2928,15 @@ public static class NativeTuning
             }
             if (File.Exists(orig))
             {
-                return SetDesktopWallpaper(orig);
+                using var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop", true);
+                if (key != null)
+                {
+                    key.SetValue("WallpaperStyle", "10");
+                    key.SetValue("TileWallpaper", "0");
+                }
+                int res = SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, orig, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+                LiveWallpaperWindow.RepairDesktopState(IntPtr.Zero);
+                return res != 0;
             }
         }
         catch { }
@@ -3951,6 +3962,34 @@ public static class NativeTuning
         catch { }
     }
 
+    public static string GetAutoWallpaperMediaType()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\NexWin", false);
+            if (key != null)
+            {
+                var val = key.GetValue("AutoWallpaperMediaType")?.ToString();
+                if (!string.IsNullOrEmpty(val) && (val == "all" || val == "video" || val == "static"))
+                {
+                    return val;
+                }
+            }
+        }
+        catch { }
+        return "all";
+    }
+
+    public static void SetAutoWallpaperMediaType(string type)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(@"Software\NexWin", true);
+            key?.SetValue("AutoWallpaperMediaType", type ?? "all", RegistryValueKind.String);
+        }
+        catch { }
+    }
+
     public class AppUpgradeDetail
     {
         public string Name { get; set; } = "";
@@ -4707,8 +4746,8 @@ foreach ($sc in $shortcuts) {
     public sealed class NexWinSelfUpdateInfo
     {
         public bool IsUpdateAvailable { get; set; }
-        public string CurrentVersion { get; set; } = "1.0.85";
-        public string LatestVersion { get; set; } = "1.0.85";
+        public string CurrentVersion { get; set; } = "1.0.86";
+        public string LatestVersion { get; set; } = "1.0.86";
         public string DownloadUrl { get; set; } = "";
         public string ReleaseNotes { get; set; } = "";
     }
@@ -4717,14 +4756,14 @@ foreach ($sc in $shortcuts) {
     {
         var info = new NexWinSelfUpdateInfo
         {
-            CurrentVersion = "1.0.85",
-            LatestVersion = "1.0.85",
+            CurrentVersion = "1.0.86",
+            LatestVersion = "1.0.86",
             IsUpdateAvailable = false
         };
 
         try
         {
-            string manifestUrl = "https://nexwin.netlify.app/version.json";
+            string manifestUrl = "https://nexwin-164.netlify.app/version.json";
             try
             {
                 using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\NexWin");
@@ -4736,7 +4775,7 @@ foreach ($sc in $shortcuts) {
             catch { }
 
             using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.85");
+            client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.86");
             string json;
             try
             {
@@ -4865,7 +4904,7 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
             {
                 string psScript = $@"
 try {{ Wait-Process -Id {currentPid} -Timeout 12 -ErrorAction SilentlyContinue }} catch {{}}
-Start-Process -FilePath '{packagePath}' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS' -Wait
+Start-Process -FilePath '{packagePath}' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/DIR=""{appDir}""' -Wait
 Start-Process -FilePath '{currentExe}'
 Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
 ";
@@ -4908,7 +4947,7 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
         public double CurrentAmount { get; set; } = 0;
         public double TargetAmount { get; set; } = 100;
         public string Currency { get; set; } = "EUR";
-        public string ApiEndpoint { get; set; } = "https://nexwin.netlify.app/.netlify/functions/api";
+        public string ApiEndpoint { get; set; } = "https://nexwin-164.netlify.app/.netlify/functions/api";
         public string DonateUrl { get; set; } = "https://ko-fi.com/luci3alin";
         public string RevolutUrl { get; set; } = "https://revolut.me/luci3alin";
         public string PaypalUrl { get; set; } = "https://paypal.me/luci3alin";
@@ -5198,12 +5237,12 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
         try
         {
             using var apiClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2.5) };
-            apiClient.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.85");
+            apiClient.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.86");
             apiClient.DefaultRequestHeaders.Add("X-Install-Id", GetOrCreateAnonymousInstallId());
-            apiClient.DefaultRequestHeaders.Add("X-App-Version", "1.0.85");
+            apiClient.DefaultRequestHeaders.Add("X-App-Version", "1.0.86");
             apiClient.DefaultRequestHeaders.Add("X-App-Lang", NexLocale.CurrentLanguage == AppLanguage.En ? "en" : "ro");
 
-            var apiResp = await apiClient.GetAsync($"{goal.ApiEndpoint.TrimEnd('/')}/goal");
+            var apiResp = await apiClient.GetAsync($"{goal.ApiEndpoint.TrimEnd('/')}/goal?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
             if (apiResp.IsSuccessStatusCode)
             {
                 string apiJson = await apiResp.Content.ReadAsStringAsync();
@@ -5220,12 +5259,12 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
         try
         {
             using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(4) };
-            client.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.85");
+            client.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.86");
             client.DefaultRequestHeaders.Add("X-Install-Id", GetOrCreateAnonymousInstallId());
 
             string[] fallbackUrls =
             {
-                "https://nexwin.netlify.app/community_goal.json",
+                "https://nexwin-164.netlify.app/community_goal.json",
                 $"https://raw.githubusercontent.com/luci3alin/NexWin/main/community_goal.json?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}"
             };
 
