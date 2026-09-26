@@ -1045,7 +1045,7 @@ public partial class MainWindow : Window
                 });
             }
             bool hasNexWinUpdate = _nexwinSelfUpdateInfo?.IsUpdateAvailable == true;
-            string latestNexWinVer = _nexwinSelfUpdateInfo?.LatestVersion ?? "1.0.87";
+            string latestNexWinVer = _nexwinSelfUpdateInfo?.LatestVersion ?? "1.0.88";
 
             var nexwinCard = new Border
             {
@@ -1131,8 +1131,8 @@ public partial class MainWindow : Window
                 Child = new TextBlock
                 {
                     Text = hasNexWinUpdate
-                        ? $"v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.87"} -> v{latestNexWinVer}"
-                        : $"v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.87"}",
+                        ? $"v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.88"} -> v{latestNexWinVer}"
+                        : $"v{_nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.88"}",
                     FontSize = 9.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = GreenBrush
@@ -1145,7 +1145,7 @@ public partial class MainWindow : Window
             {
                 Text = hasNexWinUpdate
                     ? NexLocale.Format("notif_remote_new_avail", latestNexWinVer)
-                    : NexLocale.Format("notif_remote_uptodate", _nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.87"),
+                    : NexLocale.Format("notif_remote_uptodate", _nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.88"),
                 FontSize = 11,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = hasNexWinUpdate ? CyanBrush : GreenBrush,
@@ -1236,7 +1236,7 @@ public partial class MainWindow : Window
                 {
                     ShowToast(
                         NexLocale.T("notif_remote_toast_title", "Actualizare NexWin"),
-                        NexLocale.Format("notif_remote_toast_msg", _nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.87"),
+                        NexLocale.Format("notif_remote_toast_msg", _nexwinSelfUpdateInfo?.CurrentVersion ?? "1.0.88"),
                         NexIcon.Check,
                         GreenBrush);
                 }

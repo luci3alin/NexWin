@@ -1,0 +1,10 @@
+/*
+  Access-Control-Allow-Origin: *
+
+/version.json
+  Cache-Control: no-cache, no-store, must-revalidate
+  Access-Control-Allow-Origin: *
+
+/community_goal.json
+  Cache-Control: no-cache, no-store, must-revalidate
+  Access-Control-Allow-Origin: *

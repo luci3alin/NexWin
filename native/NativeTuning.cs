@@ -18,7 +18,7 @@ namespace NexWin.Native;
 
 public static class NativeTuning
 {
-    public const string CurrentVersion = "1.0.87";
+    public const string CurrentVersion = "1.0.88";
 
     public static void TrimWorkingSet()
     {
@@ -1192,94 +1192,147 @@ public static class NativeTuning
                 }
             }
 
-            // 2. Riot Games (League of Legends, Valorant)
-            if (Directory.Exists(@"C:\Riot Games"))
+            // 2. Riot Games (League of Legends, Valorant) across all ready drives
+            try
             {
-                var lol = @"C:\Riot Games\League of Legends\LeagueClient.exe";
-                if (File.Exists(lol))
-                {
-                    foundGames["LeagueClient.exe"] = new GamePriorityItem
-                    {
-                        ExeName = "LeagueClient.exe",
-                        DisplayName = "League of Legends",
-                        FullPath = lol,
-                        Description = "Riot Games MOBA Engine"
-                    };
-                }
+                var drivesToCheck = DriveInfo.GetDrives()
+                    .Where(d => d.IsReady && (d.DriveType == DriveType.Fixed || d.DriveType == DriveType.Removable))
+                    .Select(d => d.RootDirectory.FullName)
+                    .ToList();
 
-                var val1 = @"C:\Riot Games\VALORANT\live\ShooterGame\Binaries\Win64\VALORANT-Win64-Shipping.exe";
-                var val2 = @"C:\Riot Games\VALORANT\live\VALORANT.exe";
-                if (File.Exists(val1))
+                foreach (var dRoot in drivesToCheck)
                 {
-                    foundGames["VALORANT-Win64-Shipping.exe"] = new GamePriorityItem
+                    var riotDir = System.IO.Path.Combine(dRoot, "Riot Games");
+                    if (Directory.Exists(riotDir))
                     {
-                        ExeName = "VALORANT-Win64-Shipping.exe",
-                        DisplayName = "Valorant",
-                        FullPath = val1,
-                        Description = "Riot Games Vanguard Unreal Engine"
-                    };
-                }
-                else if (File.Exists(val2))
-                {
-                    foundGames["VALORANT.exe"] = new GamePriorityItem
-                    {
-                        ExeName = "VALORANT.exe",
-                        DisplayName = "Valorant",
-                        FullPath = val2,
-                        Description = "Riot Games Vanguard Unreal Engine"
-                    };
+                        var lol = System.IO.Path.Combine(riotDir, "League of Legends", "LeagueClient.exe");
+                        if (File.Exists(lol) && !foundGames.ContainsKey("LeagueClient.exe"))
+                        {
+                            foundGames["LeagueClient.exe"] = new GamePriorityItem
+                            {
+                                ExeName = "LeagueClient.exe",
+                                DisplayName = "League of Legends",
+                                FullPath = lol,
+                                Description = "Riot Games MOBA Engine"
+                            };
+                        }
+
+                        var val1 = System.IO.Path.Combine(riotDir, "VALORANT", "live", "ShooterGame", "Binaries", "Win64", "VALORANT-Win64-Shipping.exe");
+                        var val2 = System.IO.Path.Combine(riotDir, "VALORANT", "live", "VALORANT.exe");
+                        if (File.Exists(val1) && !foundGames.ContainsKey("VALORANT-Win64-Shipping.exe"))
+                        {
+                            foundGames["VALORANT-Win64-Shipping.exe"] = new GamePriorityItem
+                            {
+                                ExeName = "VALORANT-Win64-Shipping.exe",
+                                DisplayName = "Valorant",
+                                FullPath = val1,
+                                Description = "Riot Games Vanguard Unreal Engine"
+                            };
+                        }
+                        else if (File.Exists(val2) && !foundGames.ContainsKey("VALORANT.exe"))
+                        {
+                            foundGames["VALORANT.exe"] = new GamePriorityItem
+                            {
+                                ExeName = "VALORANT.exe",
+                                DisplayName = "Valorant",
+                                FullPath = val2,
+                                Description = "Riot Games Vanguard Unreal Engine"
+                            };
+                        }
+                    }
                 }
             }
+            catch { }
 
-            // 3. Roblox (Multi-strategy: Registry + LocalAppData + Program Files + Shortcuts)
+            // 3. Roblox (Multi-strategy: URL Protocol Scheme + Registry + LocalAppData + Program Files + Shortcuts)
             try
             {
                 bool robloxFound = false;
 
-                // Strategy A: Registry Uninstall keys (User & Machine)
-                var uninstallHives = new[]
+                // Strategy 0: URL Protocol Scheme (Most reliable for all web/browser Roblox installations)
+                try
                 {
-                    (RegistryHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
-                    (RegistryHive.LocalMachine, @"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
-                    (RegistryHive.LocalMachine, @"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall")
-                };
-
-                foreach (var (hive, path) in uninstallHives)
-                {
-                    try
+                    string[] protoPaths = new[]
                     {
-                        using var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
-                        using var rk = baseKey.OpenSubKey(path);
-                        if (rk != null)
+                        @"Software\Classes\roblox-player\shell\open\command",
+                        @"roblox-player\shell\open\command"
+                    };
+                    foreach (var pPath in protoPaths)
+                    {
+                        using var pKey = Registry.CurrentUser.OpenSubKey(pPath) ?? Registry.ClassesRoot.OpenSubKey(pPath);
+                        if (pKey != null)
                         {
-                            foreach (var sub in rk.GetSubKeyNames())
+                            var cmd = pKey.GetValue("")?.ToString();
+                            if (!string.IsNullOrEmpty(cmd))
                             {
-                                if (sub.Contains("Roblox", StringComparison.OrdinalIgnoreCase))
+                                var clean = cmd.Split('\"', StringSplitOptions.RemoveEmptyEntries)
+                                               .FirstOrDefault(s => s.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+                                if (!string.IsNullOrEmpty(clean) && File.Exists(clean))
                                 {
-                                    using var sk = rk.OpenSubKey(sub);
-                                    var loc = sk?.GetValue("InstallLocation")?.ToString();
-                                    if (!string.IsNullOrEmpty(loc) && Directory.Exists(loc))
+                                    var exeName = System.IO.Path.GetFileName(clean);
+                                    foundGames[exeName] = new GamePriorityItem
                                     {
-                                        var beta = System.IO.Path.Combine(loc, "RobloxPlayerBeta.exe");
-                                        if (File.Exists(beta))
+                                        ExeName = exeName,
+                                        DisplayName = "Roblox",
+                                        FullPath = clean,
+                                        Description = "Roblox Player Engine"
+                                    };
+                                    robloxFound = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                // Strategy A: Registry Uninstall keys (User & Machine)
+                if (!robloxFound)
+                {
+                    var uninstallHives = new[]
+                    {
+                        (RegistryHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+                        (RegistryHive.LocalMachine, @"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
+                        (RegistryHive.LocalMachine, @"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall")
+                    };
+
+                    foreach (var (hive, path) in uninstallHives)
+                    {
+                        try
+                        {
+                            using var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
+                            using var rk = baseKey.OpenSubKey(path);
+                            if (rk != null)
+                            {
+                                foreach (var sub in rk.GetSubKeyNames())
+                                {
+                                    if (sub.Contains("Roblox", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        using var sk = rk.OpenSubKey(sub);
+                                        var loc = sk?.GetValue("InstallLocation")?.ToString();
+                                        if (!string.IsNullOrEmpty(loc) && Directory.Exists(loc))
                                         {
-                                            foundGames["RobloxPlayerBeta.exe"] = new GamePriorityItem
+                                            var beta = System.IO.Path.Combine(loc, "RobloxPlayerBeta.exe");
+                                            if (File.Exists(beta))
                                             {
-                                                ExeName = "RobloxPlayerBeta.exe",
-                                                DisplayName = "Roblox",
-                                                FullPath = beta,
-                                                Description = "Roblox Player Engine"
-                                            };
-                                            robloxFound = true;
-                                            break;
+                                                foundGames["RobloxPlayerBeta.exe"] = new GamePriorityItem
+                                                {
+                                                    ExeName = "RobloxPlayerBeta.exe",
+                                                    DisplayName = "Roblox",
+                                                    FullPath = beta,
+                                                    Description = "Roblox Player Engine"
+                                                };
+                                                robloxFound = true;
+                                                break;
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+                        catch { }
+                        if (robloxFound) break;
                     }
-                    catch { }
-                    if (robloxFound) break;
                 }
 
                 // Strategy B: Folder scan across LocalAppData and ProgramFiles
@@ -1387,7 +1440,74 @@ public static class NativeTuning
                 catch { }
             }
 
-            // 7. Generic Drives & Repack Games (D:\Games, C:\Games, D:\Jeux, GOG Games, etc.)
+            // 7. GOG.com Games (Registry)
+            try
+            {
+                var gogKeys = new[]
+                {
+                    @"SOFTWARE\WOW6432Node\GOG.com\Games",
+                    @"SOFTWARE\GOG.com\Games"
+                };
+                foreach (var gk in gogKeys)
+                {
+                    using var gBase = Registry.LocalMachine.OpenSubKey(gk);
+                    if (gBase != null)
+                    {
+                        foreach (var sub in gBase.GetSubKeyNames())
+                        {
+                            try
+                            {
+                                using var subKey = gBase.OpenSubKey(sub);
+                                var path = subKey?.GetValue("PATH")?.ToString() ?? subKey?.GetValue("path")?.ToString();
+                                var exe = subKey?.GetValue("EXE")?.ToString() ?? subKey?.GetValue("exe")?.ToString();
+                                var name = subKey?.GetValue("GAMENAME")?.ToString() ?? subKey?.GetValue("gameName")?.ToString() ?? sub;
+                                if (!string.IsNullOrEmpty(path) && !string.IsNullOrEmpty(exe))
+                                {
+                                    var fullExe = System.IO.Path.Combine(path, exe);
+                                    if (File.Exists(fullExe))
+                                    {
+                                        var exeName = System.IO.Path.GetFileName(fullExe);
+                                        foundGames[exeName] = new GamePriorityItem
+                                        {
+                                            ExeName = exeName,
+                                            DisplayName = name,
+                                            FullPath = fullExe,
+                                            Description = "GOG Galaxy Engine"
+                                        };
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // 8. Ubisoft Connect Games (Registry)
+            try
+            {
+                using var ubiKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs");
+                if (ubiKey != null)
+                {
+                    foreach (var sub in ubiKey.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using var sk = ubiKey.OpenSubKey(sub);
+                            var installDir = sk?.GetValue("InstallDir")?.ToString();
+                            if (!string.IsNullOrEmpty(installDir) && Directory.Exists(installDir))
+                            {
+                                TryDetectAndAddGameFromFolder(installDir, foundGames);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+
+            // 9. Generic Drives & Repack Games (D:\Games, C:\Games, D:\Jeux, GOG Games, etc.)
             try
             {
                 var readyDrives = DriveInfo.GetDrives()
@@ -5117,8 +5237,8 @@ foreach ($sc in $shortcuts) {
     {
         var info = new NexWinSelfUpdateInfo
         {
-            CurrentVersion = "1.0.87",
-            LatestVersion = "1.0.87",
+            CurrentVersion = "1.0.88",
+            LatestVersion = "1.0.88",
             IsUpdateAvailable = false
         };
 
@@ -5136,11 +5256,19 @@ foreach ($sc in $shortcuts) {
             catch { }
 
             using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.87");
+            client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.88");
+            client.DefaultRequestHeaders.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue
+            {
+                NoCache = true,
+                NoStore = true,
+                MustRevalidate = true
+            };
+
+            string urlWithBuster = manifestUrl + (manifestUrl.Contains('?') ? "&" : "?") + "t=" + DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             string json;
             try
             {
-                json = await client.GetStringAsync(manifestUrl);
+                json = await client.GetStringAsync(urlWithBuster);
             }
             catch
             {
@@ -5181,7 +5309,7 @@ foreach ($sc in $shortcuts) {
                     if (asset.TryGetProperty("browser_download_url", out var bUrl))
                     {
                         string u = bUrl.GetString() ?? "";
-                        if (u.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || u.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                        if (u.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || u.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                         {
                             info.DownloadUrl = u;
                             break;
@@ -5212,7 +5340,7 @@ foreach ($sc in $shortcuts) {
 
             using (var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(10) })
             {
-                client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.87");
+                client.DefaultRequestHeaders.Add("User-Agent", "NexWin-SelfUpdater/1.0.88");
                 using var response = await client.GetAsync(downloadUrl, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();
 
@@ -5243,7 +5371,6 @@ foreach ($sc in $shortcuts) {
             string appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
             string currentExe = Environment.ProcessPath ?? Path.Combine(appDir, "NexWin.exe");
             int currentPid = Environment.ProcessId;
-            string scriptPath = Path.Combine(tempRoot, "apply_nexwin_update.ps1");
 
             if (isZip)
             {
@@ -5251,8 +5378,10 @@ foreach ($sc in $shortcuts) {
                 Directory.CreateDirectory(stagingDir);
                 System.IO.Compression.ZipFile.ExtractToDirectory(packagePath, stagingDir, true);
 
+                string scriptPath = Path.Combine(tempRoot, "apply_nexwin_update.ps1");
                 string psScript = $@"
-try {{ Wait-Process -Id {currentPid} -Timeout 12 -ErrorAction SilentlyContinue }} catch {{}}
+try {{ Wait-Process -Id {currentPid} -Timeout 5 -ErrorAction SilentlyContinue }} catch {{}}
+try {{ Stop-Process -Id {currentPid} -Force -ErrorAction SilentlyContinue }} catch {{}}
 Start-Sleep -Milliseconds 600
 Copy-Item -Path '{stagingDir}\*' -Destination '{appDir}\' -Recurse -Force -ErrorAction SilentlyContinue
 Start-Process -FilePath '{currentExe}'
@@ -5260,25 +5389,42 @@ Start-Sleep -Seconds 2
 Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
 ";
                 await File.WriteAllTextAsync(scriptPath, psScript, Encoding.UTF8);
+
+                var psi = new ProcessStartInfo("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\"")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+                Process.Start(psi);
             }
             else
             {
-                string psScript = $@"
-try {{ Wait-Process -Id {currentPid} -Timeout 12 -ErrorAction SilentlyContinue }} catch {{}}
-Start-Process -FilePath '{packagePath}' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/DIR=""{appDir}""' -Wait
-Start-Process -FilePath '{currentExe}'
-Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
+                // Inno Setup Windows Native Batch Updater - 100% reliable, zero PowerShell policy issues
+                string cmdPath = Path.Combine(tempRoot, "apply_nexwin_update.cmd");
+                string cmdContent = $@"@echo off
+setlocal
+rem NexWin v1.0.88 Bulletproof In-Place Self Updater
+timeout /t 1 /nobreak >nul
+taskkill /F /PID {currentPid} >nul 2>&1
+timeout /t 1 /nobreak >nul
+""{packagePath}"" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
+timeout /t 1 /nobreak >nul
+start """" ""{currentExe}""
+timeout /t 3 /nobreak >nul
+(goto) 2>nul & rd /s /q ""{tempRoot}""
 ";
-                await File.WriteAllTextAsync(scriptPath, psScript, Encoding.UTF8);
+                await File.WriteAllTextAsync(cmdPath, cmdContent, Encoding.ASCII);
+
+                var psi = new ProcessStartInfo("cmd.exe", $"/c \"\"{cmdPath}\"\"")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+                Process.Start(psi);
             }
 
-            var psi = new ProcessStartInfo("powershell.exe", $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\"")
-            {
-                CreateNoWindow = true,
-                UseShellExecute = false,
-                WindowStyle = ProcessWindowStyle.Hidden
-            };
-            Process.Start(psi);
             return true;
         }
         catch
@@ -5598,9 +5744,9 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
         try
         {
             using var apiClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2.5) };
-            apiClient.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.87");
+            apiClient.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.88");
             apiClient.DefaultRequestHeaders.Add("X-Install-Id", GetOrCreateAnonymousInstallId());
-            apiClient.DefaultRequestHeaders.Add("X-App-Version", "1.0.87");
+            apiClient.DefaultRequestHeaders.Add("X-App-Version", "1.0.88");
             apiClient.DefaultRequestHeaders.Add("X-App-Lang", NexLocale.CurrentLanguage == AppLanguage.En ? "en" : "ro");
 
             var apiResp = await apiClient.GetAsync($"{goal.ApiEndpoint.TrimEnd('/')}/goal?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
@@ -5620,7 +5766,7 @@ Remove-Item -Path '{tempRoot}' -Recurse -Force -ErrorAction SilentlyContinue
         try
         {
             using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(4) };
-            client.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.87");
+            client.DefaultRequestHeaders.Add("User-Agent", "NexWin/1.0.88");
             client.DefaultRequestHeaders.Add("X-Install-Id", GetOrCreateAnonymousInstallId());
 
             string[] fallbackUrls =

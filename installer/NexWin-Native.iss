@@ -1,5 +1,5 @@
 #define MyAppName "NexWin"
-#define MyAppVersion "1.0.87"
+#define MyAppVersion "1.0.88"
 #define MyAppPublisher "luci3alin"
 #define MyAppURL "https://github.com/luci3alin/NexWin"
 #define MyAppExeName "NexWin.exe"
@@ -79,7 +79,7 @@ Name: "restorepoint"; Description: "{cm:TaskRestorePoint}"; GroupDescription: "{
 Name: "cleancache"; Description: "{cm:TaskCleanCache}"; GroupDescription: "{cm:GroupSafety}"
 
 [Files]
-Source: "..\native_stage\NexWin-v1087\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\native_stage\NexWin-v1088\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\native\assets\logo.ico"; DestDir: "{app}"; DestName: "logo.ico"; Flags: ignoreversion
 Source: "..\native\assets\nexwin_ribbon.ico"; DestDir: "{app}"; DestName: "nexwin_ribbon.ico"; Flags: ignoreversion
 Source: "..\native\assets\logo.ico"; DestDir: "{app}\assets"; DestName: "logo.ico"; Flags: ignoreversion

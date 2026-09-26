@@ -331,9 +331,65 @@ public partial class MainWindow : Window
         };
         sp.Children.Add(descBlock);
 
-        // Version only
-        var versionPanel = CreateInfoItem(NexLocale.T("settings_version"), "v1.0.87");
-        sp.Children.Add(versionPanel);
+        // Version with interactive Check for Updates button
+        var versionGrid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        versionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        versionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var vStack = new StackPanel();
+        vStack.Children.Add(new TextBlock
+        {
+            Text = NexLocale.T("settings_version"),
+            FontSize = 11,
+            Foreground = new SolidColorBrush(Color.FromRgb(100, 116, 139))
+        });
+        vStack.Children.Add(new TextBlock
+        {
+            Text = "v1.0.88",
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = TextBrush,
+            Margin = new Thickness(0, 2, 0, 0)
+        });
+        Grid.SetColumn(vStack, 0);
+        versionGrid.Children.Add(vStack);
+
+        var checkBtn = new Button
+        {
+            Content = NexLocale.T("notif_remote_btn_check", "Verifică actualizări"),
+            Background = new SolidColorBrush(Color.FromArgb(35, 14, 165, 233)),
+            Foreground = CyanBrush,
+            BorderBrush = new SolidColorBrush(Color.FromArgb(90, 14, 165, 233)),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(12, 6, 12, 6),
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = Cursors.Hand
+        };
+        checkBtn.Click += async (_, _) =>
+        {
+            checkBtn.IsEnabled = false;
+            var info = await NativeTuning.CheckNexWinSelfUpdateAsync();
+            _nexwinSelfUpdateInfo = info;
+            checkBtn.IsEnabled = true;
+
+            if (info.IsUpdateAvailable)
+            {
+                ShowNotificationsModal();
+            }
+            else
+            {
+                ShowToast(
+                    NexLocale.T("notif_remote_toast_title", "Actualizare NexWin"),
+                    NexLocale.Format("notif_remote_toast_msg", "1.0.88"),
+                    NexIcon.Check,
+                    GreenBrush);
+            }
+        };
+        Grid.SetColumn(checkBtn, 1);
+        versionGrid.Children.Add(checkBtn);
+        sp.Children.Add(versionGrid);
 
         aboutCard.Child = sp;
         cardGrid.Children.Add(aboutCard);

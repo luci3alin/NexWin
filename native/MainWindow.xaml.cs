@@ -351,45 +351,56 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            var selfUpdateTask = NativeTuning.CheckNexWinSelfUpdateAsync();
-            var upgradesTask = NativeTuning.CheckForAppUpgradesDetailedAsync();
-            await Task.WhenAll(selfUpdateTask, upgradesTask);
-
-            var selfUpdate = selfUpdateTask.Result;
-            var upgrades = upgradesTask.Result;
-
+            // 1. Immediately check NexWin Self-Update (fast ~200ms)
+            var selfUpdate = await NativeTuning.CheckNexWinSelfUpdateAsync();
             Dispatcher.Invoke(() =>
             {
                 _nexwinSelfUpdateInfo = selfUpdate;
-                cachedUpgradesList = upgrades;
+                if (selfUpdate.IsUpdateAvailable)
+                {
+                    UpdateTopNotificationsBadge(1 + (cachedUpgradesList?.Count ?? 0));
+                    
+                    // Show in-app banner toast with direct update action
+                    ShowToastWithAction(
+                        NexLocale.T("nexwin_update_toast_title", "Actualizare NexWin Nouă!"),
+                        NexLocale.Format("nexwin_update_toast_msg", selfUpdate.LatestVersion),
+                        NexIcon.Rocket,
+                        CyanBrush,
+                        NexLocale.T("notif_remote_btn_update", "Actualizează acum"),
+                        () => ShowNotificationsModal());
+
+                    NativeTuning.SendWindowsNativeToast(
+                        NexLocale.T("nexwin_update_toast_title", "Actualizare NexWin Nouă!"),
+                        NexLocale.Format("nexwin_update_toast_msg", selfUpdate.LatestVersion));
+                }
             });
 
-            int totalNotifs = upgrades.Count + (selfUpdate.IsUpdateAvailable ? 1 : 0);
-            UpdateTopNotificationsBadge(totalNotifs);
-
-            if (totalNotifs > 0 && notifyToasts)
+            // 2. Check 3rd party apps via Winget in background
+            var upgrades = await NativeTuning.CheckForAppUpgradesDetailedAsync();
+            Dispatcher.Invoke(() =>
             {
-                Dispatcher.Invoke(() =>
+                cachedUpgradesList = upgrades;
+                int totalNotifs = upgrades.Count + (selfUpdate.IsUpdateAvailable ? 1 : 0);
+                UpdateTopNotificationsBadge(totalNotifs);
+
+                if (upgrades.Count > 0 && notifyToasts)
                 {
                     var names = string.Join(", ", upgrades.Select(u => u.Name).Take(3));
                     if (upgrades.Count > 3) names += NexLocale.Format("apps_update_and_others_format", upgrades.Count - 3);
-                    if (selfUpdate.IsUpdateAvailable)
-                    {
-                        names = string.IsNullOrEmpty(names) ? $"NexWin v{selfUpdate.LatestVersion}" : $"NexWin v{selfUpdate.LatestVersion}, " + names;
-                    }
 
                     NativeTuning.SendWindowsNativeToast(
                         NexLocale.T("apps_update_native_toast_title", "NexWin - Actualizări Disponibile"),
-                        NexLocale.Format("apps_update_native_toast_msg_format", totalNotifs, names));
+                        NexLocale.Format("apps_update_native_toast_msg_format", upgrades.Count, names));
 
                     ShowToastWithAction(
                         NexLocale.T("apps_update_toast_title", "Actualizări disponibile!"),
-                        NexLocale.Format("apps_update_toast_msg_format", totalNotifs, names),
+                        NexLocale.Format("apps_update_toast_msg_format", upgrades.Count, names),
                         NexIcon.Bell, AmberBrush, NexLocale.T("apps_update_toast_btn", "Vezi actualizări"),
                         () => ShowNotificationsModal());
-                });
-            }
-            return totalNotifs;
+                }
+            });
+
+            return (selfUpdate.IsUpdateAvailable ? 1 : 0) + (cachedUpgradesList?.Count ?? 0);
         }
         catch
         {
@@ -1225,8 +1236,8 @@ public sealed partial class MainWindow : Window
                 _nexwinSelfUpdateInfo = new NativeTuning.NexWinSelfUpdateInfo
                 {
                     IsUpdateAvailable = true,
-                    CurrentVersion = "1.0.86",
-                    LatestVersion = "1.0.87",
+                    CurrentVersion = "1.0.87",
+                    LatestVersion = "1.0.88",
                     DownloadUrl = "https://github.com/luci3alin/NexWin/releases/latest/download/NexWin-Update.zip",
                     ReleaseNotes = "Actualizare automată în-place cu un singur click, fără reinstalare manuală."
                 };
